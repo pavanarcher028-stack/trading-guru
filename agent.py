@@ -1,9 +1,14 @@
 import sys
-sys.stdout.reconfigure(line_buffering=True)
-
-import time
 import os
+import time
 import anthropic
+
+sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
+
+print("=" * 50, flush=True)
+print("TRADING AGENT STARTING", flush=True)
+print("=" * 50, flush=True)
+
 from data import get_top5_ohlcv, get_market_summary
 from backtest import run_backtest, is_strategy_good
 from trader import execute_strategy
@@ -12,7 +17,7 @@ from monitor import needs_regeneration, bump_strategy_version, get_performance_s
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 strategy_code = None
-entry_prices = {}
+feedback = None
 
 def generate_strategy(market_summary, previous_feedback=None):
     feedback_text = ""
@@ -31,10 +36,9 @@ Write a Python function called get_signals(df) that:
 - Returns a pandas Series of signals: 1 = buy, -1 = sell, 0 = hold
 - Uses technical indicators like EMA, RSI, or momentum
 - Is conservative — only signals when very confident
-- Has more buy signals than sell signals
 
 Rules:
-- Use only pandas and numpy (already imported)
+- Use only pandas and numpy
 - No external libraries
 - Return ONLY the raw Python function, no explanation, no markdown
 
@@ -47,95 +51,105 @@ def get_signals(df):
     return signals
 """
 
-    print("Asking AI to generate strategy...")
+    print("[AGENT] Calling Claude API...", flush=True)
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
         messages=[{"role": "user", "content": prompt}]
     )
-
     code = response.content[0].text.strip()
     code = code.replace("```python", "").replace("```", "").strip()
-    print("Strategy generated successfully")
+    print("[AGENT] Strategy generated successfully", flush=True)
     return code
 
 def run_agent():
-    global strategy_code, entry_prices
+    global strategy_code, feedback
 
-    print("=" * 50)
-    print("TRADING AGENT STARTED")
-    print("=" * 50)
+    print("[AGENT] Checking environment variables...", flush=True)
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("[ERROR] ANTHROPIC_API_KEY is missing!", flush=True)
+        sys.exit(1)
+
+    if not os.environ.get("COINDCX_API_KEY"):
+        print("[ERROR] COINDCX_API_KEY is missing!", flush=True)
+        sys.exit(1)
+
+    if not os.environ.get("COINDCX_SECRET"):
+        print("[ERROR] COINDCX_SECRET is missing!", flush=True)
+        sys.exit(1)
+
+    print("[AGENT] All environment variables found", flush=True)
 
     loop_count = 0
-    feedback = None
 
     while True:
         try:
             loop_count += 1
-            print(f"\n--- Loop {loop_count} ---")
+            print(f"\n[AGENT] ===== Loop {loop_count} =====", flush=True)
 
-            # step 1: fetch live market data
-            print("Fetching market data...")
+            # step 1: fetch data
+            print("[AGENT] Step 1 — Fetching market data", flush=True)
             all_data = get_top5_ohlcv()
+
             if not all_data:
-                print("No data fetched — retrying in 10 mins")
+                print("[AGENT] No data received — retrying in 10 mins", flush=True)
                 time.sleep(600)
                 continue
 
+            print(f"[AGENT] Got data for {len(all_data)} coins", flush=True)
             market_summary = get_market_summary(all_data)
-            print(market_summary)
 
-            # step 2: generate strategy if none exists or needs regeneration
+            # step 2: generate strategy
+            print("[AGENT] Step 2 — Generating strategy", flush=True)
+            good_coins = []
+            attempts = 0
+
             if strategy_code is None or needs_regeneration():
                 bump_strategy_version()
-                attempts = 0
-                good_coins = []
 
                 while len(good_coins) == 0 and attempts < 5:
                     attempts += 1
-                    print(f"\nStrategy generation attempt {attempts}/5")
+                    print(f"[AGENT] Strategy attempt {attempts}/5", flush=True)
                     strategy_code = generate_strategy(market_summary, feedback)
 
-                    # step 3: backtest the strategy
-                    print("Backtesting strategy...")
+                    # step 3: backtest
+                    print("[AGENT] Step 3 — Backtesting", flush=True)
                     results = run_backtest(strategy_code, all_data)
                     good_coins = is_strategy_good(results)
 
                     if not good_coins:
-                        feedback = "Win rate below 65% or Sharpe below 2.0 or drawdown above 15%"
-                        print("Strategy failed backtest — trying again")
+                        feedback = "win rate below 65%, sharpe below 2.0, or drawdown above 15%"
+                        print("[AGENT] Strategy failed — trying again", flush=True)
 
                 if not good_coins:
-                    print("Could not find good strategy after 5 attempts — waiting 1 hour")
+                    print("[AGENT] No good strategy found — waiting 1 hour", flush=True)
                     time.sleep(3600)
                     continue
-
-                print(f"\nApproved coins: {good_coins}")
-
             else:
-                # re-backtest existing strategy on fresh data
                 results = run_backtest(strategy_code, all_data)
                 good_coins = is_strategy_good(results)
 
-            # step 4: execute trades
-            print("\nExecuting trades...")
-            trade_results = execute_strategy(strategy_code, all_data, good_coins)
+            print(f"[AGENT] Approved coins: {good_coins}", flush=True)
 
-            # step 5: print performance
-            print("\nPerformance summary:")
+            # step 4: trade
+            print("[AGENT] Step 4 — Executing trades", flush=True)
+            execute_strategy(strategy_code, all_data, good_coins)
+
+            # step 5: monitor
+            print("[AGENT] Step 5 — Performance summary", flush=True)
             get_performance_summary()
 
-            # wait 1 hour before next loop
-            print("\nSleeping for 1 hour...")
+            print("[AGENT] Sleeping 1 hour...", flush=True)
             time.sleep(3600)
 
         except KeyboardInterrupt:
-            print("\nAgent stopped manually")
+            print("[AGENT] Stopped manually", flush=True)
             break
 
         except Exception as e:
-            print(f"Unexpected error: {e}")
-            print("Retrying in 15 minutes...")
+            print(f"[AGENT] Unexpected error: {e}", flush=True)
+            print("[AGENT] Retrying in 15 minutes...", flush=True)
             time.sleep(900)
 
 if __name__ == "__main__":
