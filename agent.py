@@ -6,7 +6,7 @@ from backtest import run_backtest, is_strategy_good
 from trader import execute_strategy
 from monitor import needs_regeneration, bump_strategy_version, get_performance_summary
 
-client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 strategy_code = None
 entry_prices = {}
