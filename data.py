@@ -1,9 +1,22 @@
+import sys
+sys.stdout.reconfigure(line_buffering=True)
+
 import ccxt
 import pandas as pd
 
-exchange = ccxt.binance()
+print("[DATA] Initializing Binance connection...")
 
-# Binance symbols for price data (most liquid)
+try:
+    exchange = ccxt.binance({
+        'enableRateLimit': True,
+        'options': {
+            'defaultType': 'spot'
+        }
+    })
+    print("[DATA] Binance connected successfully")
+except Exception as e:
+    print(f"[DATA] Binance connection failed: {e}")
+
 COINS = [
     'BTC/USDT',
     'ETH/USDT',
@@ -16,7 +29,11 @@ def get_top5_ohlcv():
     all_data = {}
     for coin in COINS:
         try:
+            print(f"[DATA] Fetching {coin}...")
             ohlcv = exchange.fetch_ohlcv(coin, timeframe='1h', limit=200)
+            if not ohlcv:
+                print(f"[DATA] Empty response for {coin}")
+                continue
             df = pd.DataFrame(
                 ohlcv,
                 columns=['timestamp','open','high','low','close','volume']
@@ -24,9 +41,10 @@ def get_top5_ohlcv():
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
             all_data[coin] = df
-            print(f"[DATA] Fetched {coin} — latest close: {df['close'].iloc[-1]}")
+            print(f"[DATA] OK {coin} — {len(df)} candles — last close: {df['close'].iloc[-1]}")
         except Exception as e:
-            print(f"[DATA] Failed {coin}: {e}")
+            print(f"[DATA] FAILED {coin}: {e}")
+    print(f"[DATA] Done — fetched {len(all_data)}/5 coins")
     return all_data
 
 def get_market_summary(all_data):
@@ -41,4 +59,6 @@ def get_market_summary(all_data):
         summary.append(
             f"{coin}: price={last_close}, 24h_change={change}%, volume={vol}"
         )
-    return "\n".join(summary)
+    result = "\n".join(summary)
+    print(f"[DATA] Market summary:\n{result}")
+    return result
