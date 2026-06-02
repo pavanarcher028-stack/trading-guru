@@ -10,33 +10,35 @@ API_SECRET = os.environ.get("COINDCX_SECRET")
 
 BASE_URL = "https://api.coindcx.com"
 
+# maps Binance symbol → CoinDCX INR market
 COIN_MAP = {
-    'BTC/USDT': 'BTCINR',
-    'ETH/USDT': 'ETHINR',
-    'XRP/USDT': 'XRPINR',
-    'SOL/USDT': 'SOLINR',
-    'DOGE/USDT': 'DOGEINR'
+    'BTC/USDT':  'BTCINR',
+    'ETH/USDT':  'ETHINR',
+    'XRP/USDT':  'XRPINR',
+    'DOGE/USDT': 'DOGEINR',
+    'MATIC/USDT':'MATICINR'
 }
 
 TRADE_PERCENT = 0.30
 
+def sign_request(body_dict):
+    json_body = json.dumps(body_dict, separators=(',', ':'))
+    signature = hmac.new(
+        bytes(API_SECRET, 'utf-8'),
+        msg=bytes(json_body, 'utf-8'),
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    headers = {
+        'Content-Type': 'application/json',
+        'X-AUTH-APIKEY': API_KEY,
+        'X-AUTH-SIGNATURE': signature
+    }
+    return json_body, headers
+
 def get_balance():
     try:
         timestamp = int(round(time.time() * 1000))
-        body = {"timestamp": timestamp}
-        json_body = json.dumps(body, separators=(',', ':'))
-        signature = hmac.new(
-            bytes(API_SECRET, 'utf-8'),
-            msg=bytes(json_body, 'utf-8'),
-            digestmod=hashlib.sha256
-        ).hexdigest()
-
-        headers = {
-            'Content-Type': 'application/json',
-            'X-AUTH-APIKEY': API_KEY,
-            'X-AUTH-SIGNATURE': signature
-        }
-
+        json_body, headers = sign_request({"timestamp": timestamp})
         response = requests.post(
             f"{BASE_URL}/exchange/v1/users/balances",
             data=json_body,
@@ -46,11 +48,12 @@ def get_balance():
         for b in balances:
             if b['currency'] == 'INR':
                 inr = float(b['balance'])
-                print(f"Available balance: Rs.{round(inr, 2)}")
+                print(f"[TRADER] INR balance: Rs.{round(inr, 2)}")
                 return inr
+        print("[TRADER] INR balance not found")
         return 0
     except Exception as e:
-        print(f"Balance fetch failed: {e}")
+        print(f"[TRADER] Balance fetch failed: {e}")
         return 0
 
 def place_order(side, coin_symbol, quantity):
@@ -63,34 +66,22 @@ def place_order(side, coin_symbol, quantity):
             "quantity": quantity,
             "timestamp": timestamp
         }
-        json_body = json.dumps(body, separators=(',', ':'))
-        signature = hmac.new(
-            bytes(API_SECRET, 'utf-8'),
-            msg=bytes(json_body, 'utf-8'),
-            digestmod=hashlib.sha256
-        ).hexdigest()
-
-        headers = {
-            'Content-Type': 'application/json',
-            'X-AUTH-APIKEY': API_KEY,
-            'X-AUTH-SIGNATURE': signature
-        }
-
+        json_body, headers = sign_request(body)
         response = requests.post(
             f"{BASE_URL}/exchange/v1/orders/create",
             data=json_body,
             headers=headers
         )
         result = response.json()
-        print(f"{side.upper()} order placed for {coin_symbol}: {result}")
+        print(f"[TRADER] {side.upper()} {coin_symbol} qty={quantity} → {result}")
         return result
     except Exception as e:
-        print(f"Order failed for {coin_symbol}: {e}")
+        print(f"[TRADER] Order failed {coin_symbol}: {e}")
         return None
 
 def execute_strategy(strategy_code, all_data, good_coins):
     if not good_coins:
-        print("No approved coins to trade")
+        print("[TRADER] No approved coins to trade")
         return {}
 
     local_env = {}
@@ -99,10 +90,11 @@ def execute_strategy(strategy_code, all_data, good_coins):
 
     inr_balance = get_balance()
     if inr_balance < 100:
-        print("Balance too low to trade")
+        print("[TRADER] Balance too low — need at least Rs.100")
         return {}
 
     trade_amount = inr_balance * TRADE_PERCENT
+    print(f"[TRADER] Using Rs.{round(trade_amount, 2)} per trade (30% of balance)")
     results = {}
 
     for coin in good_coins:
@@ -110,32 +102,33 @@ def execute_strategy(strategy_code, all_data, good_coins):
             df = all_data[coin]
             signals = get_signals(df)
             last_signal = signals.iloc[-1]
-            coin_symbol = COIN_MAP.get(coin, None)
+            coin_symbol = COIN_MAP.get(coin)
 
             if not coin_symbol:
+                print(f"[TRADER] No INR pair found for {coin} — skipping")
                 continue
 
             current_price = df['close'].iloc[-1]
 
             if last_signal == 1:
                 quantity = round(trade_amount / current_price, 6)
-                print(f"Signal: BUY {coin_symbol} qty={quantity}")
+                print(f"[TRADER] BUY signal → {coin_symbol} qty={quantity}")
                 order = place_order('buy', coin_symbol, quantity)
                 results[coin] = {'action': 'buy', 'order': order}
 
             elif last_signal == -1:
                 quantity = round(trade_amount / current_price, 6)
-                print(f"Signal: SELL {coin_symbol} qty={quantity}")
+                print(f"[TRADER] SELL signal → {coin_symbol} qty={quantity}")
                 order = place_order('sell', coin_symbol, quantity)
                 results[coin] = {'action': 'sell', 'order': order}
 
             else:
-                print(f"Signal: HOLD {coin}")
+                print(f"[TRADER] HOLD → {coin}")
                 results[coin] = {'action': 'hold', 'order': None}
 
             time.sleep(1)
 
         except Exception as e:
-            print(f"Trade execution failed for {coin}: {e}")
+            print(f"[TRADER] Error for {coin}: {e}")
 
     return results
