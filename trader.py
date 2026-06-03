@@ -12,11 +12,11 @@ BASE_URL = "https://api.coindcx.com"
 
 # maps Binance symbol → CoinDCX INR market
 COIN_MAP = {
-    'BTC':   'BTCINR',
-    'ETH':   'ETHINR',
-    'XRP':   'XRPINR',
-    'DOGE':  'DOGEINR',
-    'MATIC': 'MATICINR'
+    'BTC': 'BTCINR',
+    'ETH': 'ETHINR',
+    'BNB': 'BNBINR',
+    'SOL': 'SOLUSDT',
+    'XRP': 'XRPINR'
 }
 
 TRADE_PERCENT = 0.30
