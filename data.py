@@ -72,3 +72,14 @@ def get_market_summary(all_data):
     result = "\n".join(summary)
     print("[DATA] Summary:\n" + result, flush=True)
     return result
+def get_usd_to_inr():
+    try:
+        url = "https://api.exchangerate-api.com/v4/latest/USD"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        rate = float(data["rates"]["INR"])
+        print("[DATA] Live USD/INR rate: " + str(rate), flush=True)
+        return rate
+    except Exception as e:
+        print("[DATA] Rate fetch failed, using 84.0: " + str(e), flush=True)
+        return 84.0
