@@ -47,20 +47,24 @@ def generate_strategy(market_summary, feedback=None):
         "max_tokens": 1000,
         "temperature": 0.7
     }
-    r = requests.post(
-        "https://integrate.api.nvidia.com/v1/chat/completions",
-        headers=headers,
-        json=body,
-        timeout=60
-    )
-   if r.status_code != 1000:
-        print("[AGENT] NVIDIA error: " + str(r.text), flush=True)
+    try:
+        r = requests.post(
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            headers=headers,
+            json=body,
+            timeout=60
+        )
+        if r.status_code != 200:
+            print("[AGENT] NVIDIA error: " + str(r.text), flush=True)
+            return None
+        result = r.json()
+        code = result["choices"][0]["message"]["content"]
+        code = code.replace("```python", "").replace("```", "").strip()
+        print("[AGENT] Strategy ready", flush=True)
+        return code
+    except Exception as e:
+        print("[AGENT] NVIDIA call failed: " + str(e), flush=True)
         return None
-    result = r.json()
-    code = result["choices"][0]["message"]["content"]
-    code = code.replace("```python", "").replace("```", "").strip()
-    print("[AGENT] Strategy ready", flush=True)
-    return code
 
 
 def run_agent():
@@ -94,11 +98,12 @@ def run_agent():
                 while not good_coins and attempts < 5:
                     attempts += 1
                     print("[AGENT] Attempt " + str(attempts), flush=True)
-                   strategy_code = generate_strategy(market_summary, feedback)
+                    strategy_code = generate_strategy(market_summary, feedback)
                     if strategy_code is None:
-                        print("[AGENT] Strategy generation failed, retrying...", flush=True)
+                        print("[AGENT] Generation failed, retrying...", flush=True)
+                        time.sleep(10)
                         continue
-                    results = run_backtest(strategy_code, all_data) 
+                    results = run_backtest(strategy_code, all_data)
                     good_coins = is_strategy_good(results)
                     if not good_coins:
                         feedback = "drawdown too high, win rate too low, sharpe too low"
