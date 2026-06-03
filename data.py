@@ -16,7 +16,7 @@ def get_ohlcv(symbol, pair):
         params = {
             "pair": pair,
             "interval": "1h",
-            "limit": 200
+            "limit": 1000
         }
         response = requests.get(url, params=params, timeout=15)
         print("[DATA] " + pair + " status: " + str(response.status_code), flush=True)
