@@ -95,7 +95,7 @@ def run_backtest(strategy_code, all_data):
             std = np.std(trades_arr)
             sharpe = round(avg / std if std > 0 else 0, 2)
             max_drawdown = round(max_drawdown, 2)
-            passed = win_rate >= 55.0 and max_drawdown <= 20.0 and len(trades) >= 3
+            passed = sharpe >= 1.0 and win_rate >= 45.0 and max_drawdown <= 35.0 and len(trades) >= 5
             results[coin] = {"sharpe": sharpe, "win_rate": win_rate, "max_drawdown": max_drawdown, "trades": len(trades), "passed": passed}
             status = "PASS" if passed else "FAIL"
             price_inr = round(float(df["close"].iloc[-1]) * usd_to_inr, 2)
