@@ -3,10 +3,6 @@ import requests
 import pandas as pd
 import time
 
-sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
-
-print("[DATA] Starting...", flush=True)
-
 COINS = {
     'BTC': 'BTCINR',
     'ETH': 'ETHINR',
@@ -24,7 +20,7 @@ def get_ohlcv(symbol, pair):
             'limit': 200
         }
         response = requests.get(url, params=params, timeout=15)
-        print(f"[DATA] {pair} status code: {response.status_code}", flush=True)
+        print(f"[DATA] {pair} status: {response.status_code}", flush=True)
 
         data = response.json()
 
@@ -39,7 +35,6 @@ def get_ohlcv(symbol, pair):
         df = pd.DataFrame(data)
         print(f"[DATA] {pair} columns: {list(df.columns)}", flush=True)
 
-        # rename time column
         if 'time' in df.columns:
             df = df.rename(columns={'time': 'timestamp'})
         elif 'open_time' in df.columns:
