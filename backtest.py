@@ -21,12 +21,17 @@ def run_backtest(strategy_code, all_data):
                 if sig == 1 and position == 0:
                     position = capital / price
                     buy_price = price
-                elif sig == -1 and position > 0:
-                    sell_value = position * price
-                    profit = sell_value - capital
-                    trades.append(profit)
-                    capital = sell_value
-                    position = 0
+                elif position > 0:
+                    stop_hit = price < buy_price * 0.97
+                    take_profit = price > buy_price * 1.06
+                    sell_signal = sig == -1
+                    if stop_hit or take_profit or sell_signal:
+                        sell_value = position * price
+                        profit = sell_value - capital
+                        trades.append(profit)
+                        capital = sell_value
+                        position = 0
+                        buy_price = 0
                 current_equity = capital
                 if position > 0:
                     current_equity = capital + (position * price)
