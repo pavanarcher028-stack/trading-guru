@@ -93,9 +93,12 @@ def execute_strategy(strategy_code, all_data, good_coins):
         print("[TRADER] Balance too low — need at least Rs.100")
         return {}
 
-    trade_amount = inr_balance * TRADE_PERCENT
-    print(f"[TRADER] Using Rs.{round(trade_amount, 2)} per trade (30% of balance)")
-    results = {}
+   trade_amount = inr_balance * TRADE_PERCENT
+    if trade_amount < 110:
+        trade_amount = 110
+        print(f"[TRADER] 30% was below Rs.110 — using minimum Rs.110 per trade", flush=True)
+    else:
+        print(f"[TRADER] Using Rs.{round(trade_amount, 2)} per trade (30% of balance)", flush=True)
 
     for coin in good_coins:
         try:
