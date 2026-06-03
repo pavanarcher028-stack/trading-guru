@@ -11,6 +11,8 @@ def run_backtest(strategy_code, all_data):
             exec(strategy_code, local_env)
             get_signals = local_env["get_signals"]
             signals = get_signals(df)
+            signals = signals.squeeze()
+            signals = pd.to_numeric(signals, errors="coerce").fillna(0)
             capital = 10000
             position = 0
             buy_price = 0
@@ -19,7 +21,10 @@ def run_backtest(strategy_code, all_data):
             max_drawdown = 0
             for i in range(1, len(signals)):
                 price = float(df["close"].iloc[i])
-                raw = signals.iloc[i]
+                try:
+                    raw = float(pd.Series(signals.iloc[i]).iloc[0])
+                except:
+                    raw = 0.0
                 if raw > 0:
                     sig = 1
                 elif raw < 0:
