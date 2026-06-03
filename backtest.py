@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import requests
 
-
 def get_live_rate():
     try:
         r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=10)
@@ -14,39 +13,22 @@ def get_live_rate():
     except:
         return 84.0
 
-
 def get_signals(df):
     close = df["close"]
-    high = df["high"]
-    low = df["low"]
-
-    # RSI 14
+    ema9 = close.ewm(span=9).mean()
+    ema21 = close.ewm(span=21).mean()
+    ema200 = close.ewm(span=200).mean()
     delta = close.diff()
-    gain = delta.where(delta > 0, 0.0).rolling(14).mean()
-    loss = -delta.where(delta < 0, 0.0).rolling(14).mean()
+    gain = delta.where(delta > 0, 0.0).rolling(25).mean()
+    loss = -delta.where(delta < 0, 0.0).rolling(25).mean()
     rs = gain / loss
     rsi = 100 - (100 / (1 + rs))
-
-    # Stochastic 14
-    lowest = low.rolling(14).min()
-    highest = high.rolling(14).max()
-    stoch = 100 * (close - lowest) / (highest - lowest)
-
-    # 200 EMA
-    ema200 = close.ewm(span=200).mean()
-
     signals = pd.Series(0, index=df.index)
-
-    # Buy: RSI < 20, Stoch < 25, price above 200 EMA
-    buy = (rsi < 20) & (stoch < 25) & (close > ema200)
+    buy = (ema9 > ema21) & (close > ema200) & (rsi < 30)
     signals[buy] = 1
-
-    # Sell: RSI > 65, Stoch > 75
-    sell = (rsi > 65) & (stoch > 75)
+    sell = (rsi > 80) | (ema9 < ema21)
     signals[sell] = -1
-
     return signals
-
 
 def run_backtest(strategy_code, all_data):
     usd_to_inr = get_live_rate()
@@ -71,7 +53,7 @@ def run_backtest(strategy_code, all_data):
                 elif position > 0:
                     hold_count += 1
                     pct = (price - buy_price) / buy_price * 100
-                    if pct <= -4.0 or pct >= 6.0 or hold_count >= 20 or sig == -1:
+                    if pct <= -4.0 or pct >= 8.0 or hold_count >= 48 or sig == -1:
                         sell_value = position * price
                         profit = sell_value - capital
                         trades.append(profit)
@@ -95,7 +77,7 @@ def run_backtest(strategy_code, all_data):
             std = np.std(trades_arr)
             sharpe = round(avg / std if std > 0 else 0, 2)
             max_drawdown = round(max_drawdown, 2)
-            passed = sharpe >= 1.0 and win_rate >= 45.0 and max_drawdown <= 35.0 and len(trades) >= 5
+            passed = win_rate >= 55.0 and max_drawdown <= 20.0 and len(trades) >= 3
             results[coin] = {"sharpe": sharpe, "win_rate": win_rate, "max_drawdown": max_drawdown, "trades": len(trades), "passed": passed}
             status = "PASS" if passed else "FAIL"
             price_inr = round(float(df["close"].iloc[-1]) * usd_to_inr, 2)
@@ -104,7 +86,6 @@ def run_backtest(strategy_code, all_data):
             print("Backtest failed for " + coin + ": " + str(e), flush=True)
             results[coin] = {"sharpe": 0, "win_rate": 0, "max_drawdown": 100, "trades": 0, "passed": False}
     return results
-
 
 def is_strategy_good(results):
     good_coins = []
