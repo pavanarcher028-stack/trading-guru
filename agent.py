@@ -29,6 +29,8 @@ def build_prompt(market_summary, coins):
     p += "df has columns: open, high, low, close, volume.\n"
     p += "Return pandas Series: 1=buy, -1=sell, 0=hold.\n"
     p += "Use EMA crossover and RSI. Only pandas and numpy.\n"
+    p += "The function MUST start with: import pandas as pd\n"
+    p += "The function MUST start with: import numpy as np\n"
     p += "Return ONLY the raw Python function. No markdown.\n"
     return p
 
