@@ -6,9 +6,10 @@ import random
 from api import start_api
 from strategy_store import save_strategy, load_strategy
 from data import get_top5_ohlcv, get_market_summary
-from backtest import run_backtest, is_strategy_good
+from backtest import run_backtest, is_strategy_good, get_metric_statistics
 from trader import execute_strategy
 from monitor import needs_regeneration, bump_strategy_version, get_performance_summary
+from ai_improver import batch_improve_strategies, generate_html_report
 
 print("TRADING AGENT STARTED", flush=True)
 
@@ -151,9 +152,17 @@ def search_strategy(all_data, coins):
          try:
              subset_data = {c: all_data[c] for c in coins if c in all_data}
              results = run_backtest(strat, subset_data)
-             passed = is_strategy_good(results)
-             if passed:
-                 for coin in passed:
+             good_coins, partial_fails = is_strategy_good(results)
+             
+             if partial_fails and os.environ.get("ANTHROPIC_API_KEY"):
+                 print("[SEARCH] Attempting AI improvement for partial fails", flush=True)
+                 improved_strategies = batch_improve_strategies(partial_fails, strat)
+                 
+                 if improved_strategies:
+                     generate_html_report(partial_fails, improved_strategies)
+             
+             if good_coins:
+                 for coin in good_coins:
                      with lock:
                          if coin not in active_good_coins:
                              active_good_coins.append(coin)
@@ -183,8 +192,15 @@ def revalidate(all_data):
          return
      subset_data = {c: all_data[c] for c in coins if c in all_data}
      results = run_backtest(strat, subset_data)
-     still_good = is_strategy_good(results)
+     still_good, partial_fails = is_strategy_good(results)
      failed_coins = [c for c in coins if c not in still_good]
+     
+     if partial_fails and os.environ.get("ANTHROPIC_API_KEY"):
+         print("[REVALIDATE] Attempting AI improvement for degraded strategies", flush=True)
+         improved_strategies = batch_improve_strategies(partial_fails, strat)
+         if improved_strategies:
+             generate_html_report(partial_fails, improved_strategies)
+     
      if failed_coins:
          print("[REVALIDATE] " + str(failed_coins) + " failed searching new strategy", flush=True)
          with lock:
@@ -247,6 +263,9 @@ def run_agent():
                  print("[AGENT] No data, waiting 10 mins", flush=True)
                  time.sleep(600)
                  continue
+             
+             get_metric_statistics()
+             
              saved_code, saved_coins = load_strategy()
              if saved_code and saved_coins:
                  with lock:
