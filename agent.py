@@ -280,8 +280,8 @@ def run_agent():
             ).start()
             if search_thread:
                 search_thread.join()
-            print("[AGENT] Search done. Sleeping 1 hour", flush=True)
-            time.sleep(3600)
+            print("[AGENT] Search done. Sleeping 5 mins", flush=True)
+             time.sleep(300) 
         except KeyboardInterrupt:
             break
         except Exception as e:
