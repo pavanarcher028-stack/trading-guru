@@ -221,4 +221,90 @@ def trading_loop(all_data, market_summary):
         try:
             with lock:
                 strat = active_strategy
-                coins
+                coins = list(active_good_coins)
+            if strat and coins:
+                print("[TRADER] Trading: " + str(coins), flush=True)
+                execute_strategy(strat, all_data, coins)
+                trade_count += 1
+                get_performance_summary()
+                print("[TRADER] Trade count: " + str(trade_count) + " next revalidation at: " + str(revalidate_every), flush=True)
+                if trade_count >= revalidate_every:
+                    print("[TRADER] Triggering revalidation after " + str(trade_count) + " trades", flush=True)
+                    revalidate(all_data, market_summary)
+            else:
+                print("[TRADER] Waiting for approved coins...", flush=True)
+            time.sleep(3600)
+        except Exception as e:
+            print("[TRADER] Error: " + str(e), flush=True)
+            time.sleep(300)
+
+
+def run_agent():
+    global active_strategy, active_good_coins
+    if not NVIDIA_API_KEY and not GEMINI_API_KEY:
+        print("[ERROR] No AI API key found", flush=True)
+        sys.exit(1)
+    if not os.environ.get("COINDCX_API_KEY"):
+        print("[ERROR] COINDCX_API_KEY missing", flush=True)
+        sys.exit(1)
+    if not os.environ.get("COINDCX_SECRET"):
+        print("[ERROR] COINDCX_SECRET missing", flush=True)
+        sys.exit(1)
+    print("[AGENT] All keys found", flush=True)
+    threading.Thread(target=start_api, daemon=True).start()
+    loop_count = 0
+    while True:
+        try:
+            loop_count += 1
+            print("[AGENT] Loop " + str(loop_count), flush=True)
+            all_data = get_top5_ohlcv()
+            if not all_data:
+                print("[AGENT] No data, waiting 10 mins", flush=True)
+                time.sleep(600)
+                continue
+            market_summary = get_market_summary(all_data)
+            saved_code, saved_coins = load_strategy()
+            if saved_code and saved_coins:
+                with lock:
+                    active_strategy = saved_code
+                    active_good_coins = saved_coins
+                print("[AGENT] Resuming saved strategy for: " + str(saved_coins), flush=True)
+                remaining = [c for c in ["BTC", "ETH", "BNB", "SOL", "XRP"] if c not in saved_coins]
+                if remaining:
+                    print("[AGENT] Searching for remaining: " + str(remaining), flush=True)
+                    search_thread = threading.Thread(
+                        target=search_strategy,
+                        args=(all_data, market_summary, remaining),
+                        daemon=True
+                    )
+                    search_thread.start()
+                else:
+                    search_thread = None
+            else:
+                bump_strategy_version()
+                active_good_coins = []
+                active_strategy = None
+                search_thread = threading.Thread(
+                    target=search_strategy,
+                    args=(all_data, market_summary, ["BTC", "ETH", "BNB", "SOL", "XRP"]),
+                    daemon=True
+                )
+                search_thread.start()
+            threading.Thread(
+                target=trading_loop,
+                args=(all_data, market_summary),
+                daemon=True
+            ).start()
+            if search_thread:
+                search_thread.join()
+            print("[AGENT] Search done. Sleeping 1 hour", flush=True)
+            time.sleep(3600)
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print("[AGENT] Error: " + str(e), flush=True)
+            time.sleep(900)
+
+
+if __name__ == "__main__":
+    run_agent()
