@@ -170,7 +170,7 @@ def search_strategy(all_data, coins):
         except Exception as e:
             print("[SEARCH] Strategy " + str(idx+1) + " error: " + str(e), flush=True)
         time.sleep(2)
-    remaining = [c for c in coins if c not in active_good_coins]
+   remaining = [c for c in coins if c not in active_good_coins]
     if remaining and best_strategy:
         print("[SEARCH] Using best strategy for remaining: " + str(remaining), flush=True)
         with lock:
