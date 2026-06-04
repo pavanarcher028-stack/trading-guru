@@ -22,16 +22,24 @@ revalidate_every = random.randint(10, 20)
 
 
 def build_prompt(market_summary, coins):
-    p = "You are an expert quant trading strategy developer for crypto.\n"
+    p = "You are an expert quantitative mathematician building crypto trading strategies.\n"
     p += "Market data: " + market_summary + "\n"
     p += "Target coins: " + ", ".join(coins) + "\n"
     p += "Write a Python function get_signals(df).\n"
     p += "df has columns: open, high, low, close, volume.\n"
     p += "Return pandas Series: 1=buy, -1=sell, 0=hold.\n"
-    p += "Use EMA crossover and RSI. Only pandas and numpy.\n"
     p += "The function MUST start with: import pandas as pd\n"
     p += "The function MUST start with: import numpy as np\n"
-    p += "Return ONLY the raw Python function. No markdown.\n"
+    p += "Use ONE of these proven quant math approaches:\n"
+    p += "1. Z-Score mean reversion: zscore = (price - rolling_mean) / rolling_std, buy when zscore < -1.5, sell when zscore > 1.5\n"
+    p += "2. Hurst exponent regime: calculate rolling variance ratio, buy in mean-reverting regime, sell in trending regime\n"
+    p += "3. Volatility breakout: ATR-based entry when price breaks above upper band with volume confirmation\n"
+    p += "4. Momentum z-score: standardized returns momentum with rolling 20 period window\n"
+    p += "5. Ornstein-Uhlenbeck: estimate mean reversion speed, trade when price deviates more than 1.5 sigma\n"
+    p += "IMPORTANT: Strategy must generate at least 15 trades over 1000 hourly candles.\n"
+    p += "Use rolling windows of 20-50 periods maximum.\n"
+    p += "Stop loss enforced externally at 3 percent. Take profit at 6 percent.\n"
+    p += "Return ONLY the raw Python function. No markdown. No explanation.\n"
     return p
 
 
