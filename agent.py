@@ -75,8 +75,24 @@ def call_nvidia(prompt):
         if r.status_code != 200:
             print("[AGENT] NVIDIA error: " + str(r.text), flush=True)
             return None
-        code = r.json()["choices"][0]["message"]["content"]
-        code = code.replace("```python", "").replace("```", "").strip()
+       full = r.json()["choices"][0]["message"]["content"]
+        if "```python" in full:
+            code = full.split("```python")[1].split("```")[0].strip()
+        elif "```" in full:
+            code = full.split("```")[1].split("```")[0].strip()
+        elif "def get_signals" in full:
+            code = full[full.index("def get_signals"):]
+            if "</" in code:
+                code = code[:code.index("</")]
+            code = code.strip()
+        else:
+            code = full.strip()
+        think_tags = ["<think>", "</think>", "<reasoning>", "</reasoning>"]
+        for tag in think_tags:
+            code = code.replace(tag, "")
+        if "def get_signals" not in code:
+            print("[AGENT] No valid function found", flush=True)
+            return None
         print("[AGENT] Strategy ready", flush=True)
         return code
     except Exception as e:
