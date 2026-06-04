@@ -26,8 +26,9 @@ def run_backtest(strategy_code, all_data):
             raw = get_signals(df.copy())
             if isinstance(raw, pd.DataFrame):
                 raw = raw.iloc[:, 0]
-            signals = pd.Series(raw.values, index=df.index)
-            signals = pd.to_numeric(signals, errors="coerce").fillna(0)
+            raw = pd.Series(raw).reset_index(drop=True)
+            signals = pd.to_numeric(raw, errors="coerce").fillna(0)
+            signals.index = df.index[:len(signals)]
             capital = 10000
             position = 0
             buy_price = 0
