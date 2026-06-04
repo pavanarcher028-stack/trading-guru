@@ -1,4 +1,6 @@
 import sys
+import threading
+from api import start_api
 import os
 import time
 import requests
@@ -94,6 +96,7 @@ def run_agent():
         print("[ERROR] COINDCX_SECRET missing", flush=True)
         sys.exit(1)
     print("[AGENT] All keys found", flush=True)
+    threading.Thread(target=start_api, daemon=True).start()
     strategy_code = None
     failed_tests = []
     loop_count = 0
