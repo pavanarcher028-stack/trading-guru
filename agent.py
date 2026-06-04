@@ -70,41 +70,40 @@ def clean_code(full):
 
 
 def call_nvidia(prompt):
-    print("[AGENT] Calling NVIDIA API...", flush=True)
-    headers = {
-        "Authorization": "Bearer " + NVIDIA_API_KEY,
-        "Content-Type": "application/json"
-    }
-    body = {
-        "model": "deepseek-ai/deepseek-v4-pro",
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 800,
-        "temperature": 0.3
-    }
-    try:
-        r = requests.post(
-            "https://integrate.api.nvidia.com/v1/chat/completions",
-            headers=headers,
-            json=body,
-            timeout=120
-        )
-        if r.status_code == 429:
-            print("[AGENT] Rate limited waiting 60 seconds...", flush=True)
-            time.sleep(60)
-            return None
-        if r.status_code != 200:
-            print("[AGENT] NVIDIA error: " + str(r.text), flush=True)
-            return None
-        full = r.json()["choices"][0]["message"]["content"]
-        code = clean_code(full)
-        if code is None:
-            print("[AGENT] No valid function found", flush=True)
-            return None
-        print("[AGENT] Strategy ready", flush=True)
-        return code
-    except Exception as e:
-        print("[AGENT] NVIDIA failed: " + str(e), flush=True)
-        return None
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    nvidia_key = NVIDIA_API_KEY
+    print("[AGENT] Calling AI API...", flush=True)
+    if gemini_key:
+        try:
+            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + gemini_key
+            body = {"contents": [{"parts": [{"text": prompt}]}]}
+            r = requests.post(url, json=body, timeout=60)
+            if r.status_code == 200:
+                full = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                code = clean_code(full)
+                if code:
+                    print("[AGENT] Strategy ready via Gemini", flush=True)
+                    return code
+        except Exception as e:
+            print("[AGENT] Gemini failed: " + str(e), flush=True)
+    if nvidia_key:
+        try:
+            headers = {"Authorization": "Bearer " + nvidia_key, "Content-Type": "application/json"}
+            body = {"model": "deepseek-ai/deepseek-v4-pro", "messages": [{"role": "user", "content": prompt}], "max_tokens": 800, "temperature": 0.3}
+            r = requests.post("https://integrate.api.nvidia.com/v1/chat/completions", headers=headers, json=body, timeout=120)
+            if r.status_code == 429:
+                print("[AGENT] NVIDIA rate limited waiting 60 seconds...", flush=True)
+                time.sleep(60)
+                return None
+            if r.status_code == 200:
+                full = r.json()["choices"][0]["message"]["content"]
+                code = clean_code(full)
+                if code:
+                    print("[AGENT] Strategy ready via NVIDIA", flush=True)
+                    return code
+        except Exception as e:
+            print("[AGENT] NVIDIA failed: " + str(e), flush=True)
+    return None
 
 
 def search_strategy(all_data, market_summary, coins):
