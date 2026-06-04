@@ -166,7 +166,7 @@ def search_strategy(all_data, coins):
                     break
         except Exception as e:
             print("[SEARCH] Strategy " + str(idx + 1) + " error: " + str(e), flush=True)
-        time.sleep(2)
+        time.sleep(100)
     remaining = [c for c in coins if c not in active_good_coins]
     if remaining:
         print("[SEARCH] No passing strategy for: " + str(remaining) + " skipping", flush=True)
@@ -221,10 +221,10 @@ def trading_loop(all_data):
                     revalidate(all_data)
             else:
                 print("[TRADER] Waiting for approved coins...", flush=True)
-            time.sleep(3600)
+            time.sleep(100)
         except Exception as e:
             print("[TRADER] Error: " + str(e), flush=True)
-            time.sleep(300)
+            time.sleep(100)
 
 
 def run_agent():
