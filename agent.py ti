@@ -124,7 +124,7 @@ def run_agent():
                     strategy_code = call_nvidia(prompt)
                     if strategy_code is None:
                         print("[AGENT] Generation failed", flush=True)
-                        time.sleep(10)
+                        time.sleep(30)
                         continue
                     results = run_backtest(strategy_code, all_data)
                     good_coins = is_strategy_good(results)
@@ -156,7 +156,7 @@ def run_agent():
                         print("[AGENT] Issues: " + str(len(failed_tests)), flush=True)
                 if not good_coins:
                     print("[AGENT] No good strategy, waiting 1 hour", flush=True)
-                    time.sleep(3600)
+                    time.sleep(900)
                     continue
             else:
                 results = run_backtest(strategy_code, all_data)
