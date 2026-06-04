@@ -3,7 +3,6 @@ import os
 import time
 import threading
 import random
-import requests
 from api import start_api
 from strategy_store import save_strategy, load_strategy
 from data import get_top5_ohlcv, get_market_summary
@@ -147,9 +146,7 @@ def get_signals(df):
 
 def search_strategy(all_data, coins):
     global active_strategy, active_good_coins
-    print("[SEARCH] Testing " + str(len(STRATEGIES)) + " built-in quant strategies for: " + str(coins), flush=True)
-    best_strategy = None
-    best_score = 0
+    print("[SEARCH] Testing " + str(len(STRATEGIES)) + " strategies for: " + str(coins), flush=True)
     for idx, strat in enumerate(STRATEGIES):
         try:
             subset_data = {c: all_data[c] for c in coins if c in all_data}
@@ -162,23 +159,17 @@ def search_strategy(all_data, coins):
                             active_good_coins.append(coin)
                             active_strategy = strat
                             save_strategy(strat, active_good_coins)
-                            print("[SEARCH] Strategy " + str(idx+1) + " approved " + coin, flush=True)
-            score = sum(1 for r in results.values() if r["passed"])
-            if score > best_score:
-                best_score = score
-                best_strategy = strat
+                            print("[SEARCH] Strategy " + str(idx + 1) + " approved " + coin, flush=True)
+                coins = [c for c in coins if c not in active_good_coins]
+                if not coins:
+                    print("[SEARCH] All coins approved", flush=True)
+                    break
         except Exception as e:
-            print("[SEARCH] Strategy " + str(idx+1) + " error: " + str(e), flush=True)
+            print("[SEARCH] Strategy " + str(idx + 1) + " error: " + str(e), flush=True)
         time.sleep(2)
-   remaining = [c for c in coins if c not in active_good_coins]
-    if remaining and best_strategy:
-        print("[SEARCH] Using best strategy for remaining: " + str(remaining), flush=True)
-        with lock:
-            for c in remaining:
-                if c not in active_good_coins:
-                    active_good_coins.append(c)
-            active_strategy = best_strategy
-            save_strategy(best_strategy, active_good_coins)
+    remaining = [c for c in coins if c not in active_good_coins]
+    if remaining:
+        print("[SEARCH] No passing strategy for: " + str(remaining) + " skipping", flush=True)
     print("[SEARCH] Done. Active: " + str(active_good_coins), flush=True)
 
 
@@ -195,11 +186,12 @@ def revalidate(all_data):
     still_good = is_strategy_good(results)
     failed_coins = [c for c in coins if c not in still_good]
     if failed_coins:
-        print("[REVALIDATE] " + str(failed_coins) + " failed — searching new strategy", flush=True)
+        print("[REVALIDATE] " + str(failed_coins) + " failed searching new strategy", flush=True)
         with lock:
             for c in failed_coins:
                 if c in active_good_coins:
                     active_good_coins.remove(c)
+            save_strategy(active_strategy, active_good_coins)
         threading.Thread(
             target=search_strategy,
             args=(all_data, failed_coins),
