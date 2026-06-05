@@ -5,3 +5,4 @@ vectorbt
 anthropic
 requests
 openai
+google-generativeai
