@@ -44,9 +44,15 @@ def get_balance():
             data=json_body,
             headers=headers
         )
-        balances = response.json()
+        resp = response.json()
+        if isinstance(resp, dict):
+            balances = resp.get("data", resp.get("balances", []))
+        else:
+            balances = resp
         for b in balances:
-            if b["currency"] == "INR":
+            if not isinstance(b, dict):
+                continue
+            if b.get("currency") == "INR":
                 inr = float(b["balance"])
                 print("[TRADER] INR balance: Rs." + str(round(inr, 2)), flush=True)
                 return inr
