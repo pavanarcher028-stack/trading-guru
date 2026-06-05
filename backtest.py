@@ -135,7 +135,7 @@ def run_backtest(strategy_code, all_data):
             sharpe = round(avg / std if std > 0 else 0.0, 2)
             
             # Check individual metrics
-            passed = sharpe >= 0.5 and win_rate >= 55.0 and max_drawdown <= 20.0 and len(trades) >= 5
+           passed = sharpe >= 0.5 and win_rate >= 55.0 and max_drawdown <= 15.0 and len(trades) >= 5
             
             # Track which metrics failed
             failed_metrics = []
@@ -143,7 +143,7 @@ def run_backtest(strategy_code, all_data):
                 failed_metrics.append("sharpe")
             if win_rate < 55.0:
                 failed_metrics.append("win_rate")
-            if max_drawdown > 20.0:
+            if max_drawdown > 15.0:
                 failed_metrics.append("max_drawdown")
             if len(trades) < 5:
                 failed_metrics.append("trades_count")
