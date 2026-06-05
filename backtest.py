@@ -60,6 +60,19 @@ def run_backtest(strategy_code, all_data):
             raw = pd.Series(raw).reset_index(drop=True)
             signals = pd.to_numeric(raw, errors="coerce").fillna(0)
             close = df["close"].reset_index(drop=True)
+            sl_pct = -100.0
+            tp_pct = 1000.0
+            import re
+            sl_match = re.search(r'SL_PCT\s*=\s*([\d.]+)', strategy_code)
+            tp_match = re.search(r'TP_PCT\s*=\s*([\d.]+)', strategy_code)
+            if sl_match:
+                sl_pct = -float(sl_match.group(1))
+            if tp_match:
+                tp_pct = float(tp_match.group(1))
+            if sl_match or tp_match:
+                print("[BACKTEST] AI defined SL=" + str(sl_pct) + "% TP=" + str(tp_pct) + "%", flush=True)
+            else:
+                print("[BACKTEST] No SL/TP defined by AI — strategy manages its own exits", flush=True)
             capital = 10000.0
             position = 0.0
             buy_price = 0.0
