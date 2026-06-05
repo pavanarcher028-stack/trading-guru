@@ -1,50 +1,87 @@
 import os
 import requests
+import time
+import json
 
 
-def improve_strategy_with_google_ai(strategy_code, failed_metrics, coin):
+def improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item=None):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("[GOOGLE_AI] GEMINI_API_KEY not set", flush=True)
         return None
 
+    sharpe = str(item.get("sharpe", "unknown")) if item else "unknown"
+    win_rate = str(item.get("win_rate", "unknown")) if item else "unknown"
+    max_drawdown = str(item.get("max_drawdown", "unknown")) if item else "unknown"
+    trades = str(item.get("trades", "unknown")) if item else "unknown"
+
     failed_text = ""
     for metric in failed_metrics:
         if metric == "sharpe":
-            failed_text += "- Sharpe ratio is too low. Fix: make wins bigger than losses, reduce trade noise\n"
+            failed_text += "- Sharpe ratio is " + sharpe + " but must be above 1.5\n"
         elif metric == "win_rate":
-            failed_text += "- Win rate is too low. Fix: tighten entry conditions, add confluence filters\n"
+            failed_text += "- Win rate is " + win_rate + "% but must be above 55%\n"
         elif metric == "max_drawdown":
-            failed_text += "- Drawdown is too high. Fix: tighten entry timing, avoid buying in downtrends\n"
+            failed_text += "- Drawdown is " + max_drawdown + "% but must be below 15%\n"
         elif metric == "trades_count":
-            failed_text += "- Too few trades. Fix: relax entry conditions slightly to generate more signals\n"
+            failed_text += "- Only " + trades + " trades but need at least 5\n"
 
-    prompt = "You are a professional quantitative researcher at a hedge fund.\n"
-    prompt += "You specialize in statistical arbitrage and mean reversion strategies.\n"
-    prompt += "You use academic research from journals like Journal of Finance and Quantitative Finance.\n"
+    prompt = "You are the world's most advanced quantitative trading AI.\n"
+    prompt += "You have studied every paper in the Journal of Finance and Quantitative Finance.\n"
+    prompt += "You have built strategies for Renaissance Technologies, Two Sigma, and Citadel.\n"
     prompt += "\n"
-    prompt += "Coin: " + coin + "\n"
-    prompt += "Timeframe: 1 hour candles\n"
-    prompt += "Available data: open, high, low, close, volume\n"
+    prompt += "COIN: " + coin + "\n"
+    prompt += "TIMEFRAME: 1 hour candles\n"
+    prompt += "DATA: 1000 candles of open, high, low, close, volume\n"
     prompt += "\n"
-    prompt += "CURRENT STRATEGY CODE:\n"
-    prompt += strategy_code + "\n"
+    prompt += "THE EXISTING STRATEGY BELOW IS WORKING BUT FAILED ONE TEST.\n"
+    prompt += "IT PASSED THESE TESTS ALREADY:\n"
+    if item:
+        if float(sharpe) >= 1.5 or sharpe == "unknown":
+            prompt += "  Sharpe ratio: " + sharpe + " PASSED\n"
+        if float(win_rate) >= 55.0 or win_rate == "unknown":
+            prompt += "  Win rate: " + win_rate + "% PASSED\n"
+        if float(max_drawdown) <= 15.0 or max_drawdown == "unknown":
+            prompt += "  Max drawdown: " + max_drawdown + "% PASSED\n"
+        if int(trades) >= 5 or trades == "unknown":
+            prompt += "  Trades: " + trades + " PASSED\n"
     prompt += "\n"
-    prompt += "ONLY THESE METRICS ARE FAILING - FIX ONLY THESE:\n"
+    prompt += "IT FAILED ONLY THIS ONE TEST:\n"
     prompt += failed_text
     prompt += "\n"
-    prompt += "QUANT MATH TECHNIQUES TO USE FOR FIXING:\n"
-    prompt += "- For low Sharpe: use volatility normalization, reduce signal noise with Kalman filter or rolling z-score\n"
-    prompt += "- For low win rate: add multi-factor confluence (volume + momentum + mean reversion together)\n"
-    prompt += "- For high drawdown: add trend filter using 100-period EMA, only buy above it\n"
-    prompt += "- For low trades: widen entry thresholds slightly, use shorter rolling windows\n"
+    prompt += "BACKTEST SYSTEM RULES YOU MUST KNOW:\n"
+    prompt += "  Stop loss: automatically exits at -3 percent from entry\n"
+    prompt += "  Take profit: automatically exits at +6 percent from entry\n"
+    prompt += "  Time stop: exits after 48 candles maximum\n"
     prompt += "\n"
-    prompt += "RULES:\n"
-    prompt += "1. Do NOT change logic that is already passing\n"
-    prompt += "2. Use only pandas and numpy\n"
-    prompt += "3. Strategy must generate minimum 10 trades over 1000 hourly candles\n"
-    prompt += "4. Stop loss at 3 percent and take profit at 6 percent are enforced externally\n"
-    prompt += "5. Function must start with import pandas as pd and import numpy as np\n"
+    prompt += "MINIMUM PASSING THRESHOLDS:\n"
+    prompt += "  Sharpe ratio: above 1.5\n"
+    prompt += "  Win rate: above 55 percent\n"
+    prompt += "  Max drawdown: below 15 percent\n"
+    prompt += "  Minimum trades: at least 5 over 1000 candles\n"
+    prompt += "\n"
+    prompt += "CURRENT SCORES:\n"
+    prompt += "  Sharpe: " + sharpe + " (target above 1.5)\n"
+    prompt += "  Win rate: " + win_rate + "% (target above 55%)\n"
+    prompt += "  Drawdown: " + max_drawdown + "% (target below 15%)\n"
+    prompt += "  Trades: " + trades + " (target at least 5)\n"
+    prompt += "\n"
+    prompt += "CURRENT WORKING STRATEGY CODE:\n"
+    prompt += strategy_code + "\n"
+    prompt += "\n"
+    prompt += "FIX INSTRUCTIONS FOR EACH POSSIBLE FAILING METRIC:\n"
+    prompt += "  If Sharpe too low: normalize signals by dividing by rolling_std(20), filter noise\n"
+    prompt += "  If win rate too low: add volume above 20 period average + momentum confirmation\n"
+    prompt += "  If drawdown too high: add EMA 100 trend filter, only buy when price above EMA 100\n"
+    prompt += "  If trades too few: shorten rolling windows to 10-20 periods, lower z-score thresholds\n"
+    prompt += "\n"
+    prompt += "STRICT RULES:\n"
+    prompt += "1. Do NOT change any logic that is already passing\n"
+    prompt += "2. ONLY fix the one failing metric\n"
+    prompt += "3. Use ONLY pandas and numpy\n"
+    prompt += "4. First two lines inside function must be: import pandas as pd and import numpy as np\n"
+    prompt += "5. Return pandas Series: 1=buy -1=sell 0=hold\n"
+    prompt += "6. Generate at least 10 signals over 1000 candles\n"
     prompt += "\n"
     prompt += "Return ONLY the complete get_signals(df) function. No markdown. No explanation.\n"
 
@@ -63,12 +100,12 @@ def improve_strategy_with_google_ai(strategy_code, failed_metrics, coin):
             else:
                 code = full.strip()
             if "def get_signals" in code:
-                print("[GOOGLE_AI] Improved strategy for " + coin + " fixing: " + str(failed_metrics), flush=True)
+                print("[GOOGLE_AI] Strategy improved for " + coin + " fixing: " + str(failed_metrics), flush=True)
                 return code
             print("[GOOGLE_AI] No valid function returned", flush=True)
             return None
         elif r.status_code == 429:
-            print("[GOOGLE_AI] Rate limited, skipping", flush=True)
+            print("[GOOGLE_AI] Rate limited skipping", flush=True)
             return None
         else:
             print("[GOOGLE_AI] Error: " + str(r.status_code), flush=True)
@@ -82,9 +119,26 @@ def validate_with_nvidia(strategy_code, coin):
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
         return {"valid": True, "errors": []}
-    prompt = "Check this Python function for syntax errors only. Reply in JSON format: "
-    prompt += "{\"valid\": true or false, \"errors\": [\"list of errors\"]}\n"
-    prompt += strategy_code
+
+    prompt = "You are the world's best hedge fund code reviewer and quantitative developer.\n"
+    prompt += "Your job is to review trading strategy code like a senior quant at Renaissance Technologies.\n"
+    prompt += "\n"
+    prompt += "Review this Python trading strategy function:\n"
+    prompt += strategy_code + "\n"
+    prompt += "\n"
+    prompt += "Check for:\n"
+    prompt += "1. Syntax errors that will crash Python\n"
+    prompt += "2. Logic errors that will produce wrong signals\n"
+    prompt += "3. Pandas or numpy usage mistakes\n"
+    prompt += "4. Missing imports inside the function\n"
+    prompt += "5. Division by zero risks\n"
+    prompt += "6. NaN handling issues\n"
+    prompt += "\n"
+    prompt += "Reply ONLY in this exact JSON format with no other text:\n"
+    prompt += "{\"valid\": true, \"errors\": [], \"fixed_code\": \"\"}\n"
+    prompt += "If errors found set valid to false, list errors, and put the fixed code in fixed_code.\n"
+    prompt += "If no errors set valid to true, errors to empty list, fixed_code to empty string.\n"
+
     try:
         r = requests.post(
             "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -92,26 +146,29 @@ def validate_with_nvidia(strategy_code, coin):
             json={
                 "model": "deepseek-ai/deepseek-v4-pro",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 200,
+                "max_tokens": 1500,
                 "temperature": 0.1
             },
             timeout=60
         )
         if r.status_code == 200:
             content = r.json()["choices"][0]["message"]["content"]
-            import json
             try:
                 start = content.find("{")
                 end = content.rfind("}") + 1
                 result = json.loads(content[start:end])
-                print("[NVIDIA] Validated " + coin + " errors: " + str(result.get("errors", [])), flush=True)
+                if result.get("errors"):
+                    print("[NVIDIA] Errors found in " + coin + ": " + str(result.get("errors")), flush=True)
+                if result.get("fixed_code") and len(result.get("fixed_code", "")) > 10:
+                    print("[NVIDIA] Auto-fixed code for " + coin, flush=True)
+                    result["auto_fixed"] = True
                 return result
             except:
-                return {"valid": True, "errors": []}
-        return {"valid": True, "errors": []}
+                return {"valid": True, "errors": [], "fixed_code": ""}
+        return {"valid": True, "errors": [], "fixed_code": ""}
     except Exception as e:
         print("[NVIDIA] Failed: " + str(e), flush=True)
-        return {"valid": True, "errors": []}
+        return {"valid": True, "errors": [], "fixed_code": ""}
 
 
 def batch_improve_and_validate_strategies(partial_fails, strategy_code):
@@ -120,22 +177,26 @@ def batch_improve_and_validate_strategies(partial_fails, strategy_code):
         coin = item["coin"]
         failed_metrics = item["failed_metrics"]
         if len(failed_metrics) != 1:
-            print("[PIPELINE] " + coin + " has " + str(len(failed_metrics)) + " failures — skipping", flush=True)
+            print("[PIPELINE] " + coin + " has " + str(len(failed_metrics)) + " failures — only fixing when exactly 1 fails skipping", flush=True)
             continue
         print("[PIPELINE] " + coin + " fixing only: " + str(failed_metrics), flush=True)
-        import time
         time.sleep(15)
-        new_code = improve_strategy_with_google_ai(strategy_code, failed_metrics, coin)
+        new_code = improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item)
         if not new_code:
             print("[PIPELINE] Could not improve " + coin, flush=True)
             continue
         validation = validate_with_nvidia(new_code, coin)
-        if validation.get("errors"):
-            print("[PIPELINE] " + coin + " has errors: " + str(validation["errors"]), flush=True)
-        else:
-            improved[coin] = new_code
-            print("[PIPELINE] " + coin + " improved and validated", flush=True)
+        if not validation.get("valid", True):
+            if validation.get("fixed_code") and len(validation.get("fixed_code", "")) > 10:
+                print("[PIPELINE] NVIDIA auto-fixed errors for " + coin, flush=True)
+                new_code = validation["fixed_code"]
+            else:
+                print("[PIPELINE] " + coin + " has unfixable errors skipping", flush=True)
+                continue
+        improved[coin] = new_code
+        print("[PIPELINE] " + coin + " improved validated and ready for backtest", flush=True)
     return improved
+
 
 def generate_html_report(partial_fails, improved_strategies):
     return None
