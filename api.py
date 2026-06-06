@@ -158,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.path in ("/", "/dashboard"):
                 self.send_response(200)
-                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(DASHBOARD_HTML.encode())
             elif self.path == "/api/dashboard":
