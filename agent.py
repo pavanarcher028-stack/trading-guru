@@ -3,6 +3,7 @@ import os
 import time
 import threading
 import random
+import log_capture; log_capture.install()
 from api import start_api
 from strategy_store import save_strategy, load_strategy
 from data import get_top5_ohlcv, get_market_summary

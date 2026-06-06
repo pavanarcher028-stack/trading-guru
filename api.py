@@ -3,6 +3,7 @@ import os
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from monitor import load_log
+import log_capture
 
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -41,6 +42,9 @@ tr:hover td{background:#1c2128}
 .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
 .badge-win{background:#003d1a;color:#3fb950;border:1px solid #238636}
 .badge-loss{background:#3d0000;color:#f85149;border:1px solid #da3633}
+.log-container{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px;max-height:320px;overflow-y:auto;font-family:'Cascadia Code','Fira Code','Consolas',monospace;font-size:11px;line-height:1.5}
+.log-container div{padding:1px 4px;white-space:pre-wrap;word-break:break-all}
+.log-container div:nth-child(odd){background:#010409}
 .refresh-info{text-align:center;margin-top:20px;font-size:12px;color:#484f58}
 .loading{text-align:center;padding:40px;color:#484f58}
 .error{text-align:center;padding:20px;color:#f85149;background:#3d0000;border-radius:8px;border:1px solid #da3633}
@@ -58,6 +62,7 @@ tr:hover td{background:#1c2128}
 <div class="card"><h3>Open Positions</h3><div id="positions" class="loading">Loading...</div></div>
 </div>
 <div class="card"><h3>Recent Trades</h3><div id="trades" class="loading">Loading...</div></div>
+<div class="card"><h3>Recent Activity</h3><div id="activity" class="loading">Loading...</div></div>
 <div class="refresh-info">Auto-refreshes every 15s &middot; <span id="last-update">-</span></div>
 <script>
 function fetchAPI(endpoint){return fetch(endpoint).then(r=>{if(!r.ok)throw new Error(r.statusText);return r.json()})}
@@ -122,6 +127,25 @@ tradesDiv.innerHTML=tableHTML;
 }).catch(e=>{
 document.getElementById('balance').innerHTML='<div class="error">Failed to load dashboard: '+e.message+'</div>';
 });
+fetchAPI('/api/logs').then(d=>{
+const actDiv=document.getElementById('activity');
+const lines=d.lines||[];
+if(lines.length===0){
+actDiv.innerHTML='<div style="text-align:center;padding:16px;color:#484f58">No activity yet</div>';
+}else{
+let html='<div class="log-container">';
+for(const line of lines){
+const clean=escapeHTML(line);
+const cls=clean.includes('FAIL')||clean.includes('fail')||clean.includes('Error')||clean.includes('error')?'red':clean.includes('PASS')||clean.includes('WIN')||clean.includes('pass')?'green':clean.includes('LIVE')||clean.includes('BUY')||clean.includes('SELL')?'orange':'';
+html+='<div'+(cls?' style="color:'+cls+'"':'')+'>'+clean+'</div>';
+}
+html+='</div>';
+actDiv.innerHTML=html;
+const container=actDiv.querySelector('.log-container');
+if(container)container.scrollTop=container.scrollHeight;
+}).catch(e=>{
+document.getElementById('activity').innerHTML='<div class="error">Failed to load logs</div>';
+});
 }
 render();
 setInterval(render,15000);
@@ -140,6 +164,9 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/dashboard":
                 data = self._build_dashboard_data()
                 self._json_response(200, data)
+            elif self.path == "/api/logs":
+                lines = log_capture.get_recent(60)
+                self._json_response(200, {"lines": lines})
             elif self.path == "/status":
                 log = load_log()
                 self._json_response(200, log)
