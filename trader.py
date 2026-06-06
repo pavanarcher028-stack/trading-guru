@@ -26,6 +26,8 @@ MAX_TRADE = 500
 
 POSITIONS_FILE = "positions.json"
 positions_lock = threading.Lock()
+_balance_cache = {"value": None, "time": 0}
+_balance_cache_lock = threading.Lock()
 
 def sign_request(body_dict):
     json_body = json.dumps(body_dict, separators=(",", ":"))
@@ -52,6 +54,10 @@ def save_positions(positions):
         json.dump(positions, f, indent=2)
 
 def get_balance():
+    now = time.time()
+    with _balance_cache_lock:
+        if _balance_cache["value"] is not None and now - _balance_cache["time"] < 60:
+            return _balance_cache["value"]
     try:
         timestamp = int(round(time.time() * 1000))
         json_body, headers = sign_request({"timestamp": timestamp})
@@ -71,11 +77,19 @@ def get_balance():
             if b.get("currency") == "INR":
                 inr = float(b.get("balance", 0))
                 print("[TRADER] INR balance: Rs." + str(round(inr, 2)), flush=True)
+                with _balance_cache_lock:
+                    _balance_cache["value"] = inr
+                    _balance_cache["time"] = now
                 return inr
-        print("[TRADER] INR balance not found", flush=True)
+        with _balance_cache_lock:
+            _balance_cache["value"] = 0
+            _balance_cache["time"] = now
         return 0
     except Exception as e:
         print("[TRADER] Balance fetch failed: " + str(e), flush=True)
+        with _balance_cache_lock:
+            _balance_cache["value"] = 0
+            _balance_cache["time"] = now
         return 0
 
 def get_coin_balance(symbol):
