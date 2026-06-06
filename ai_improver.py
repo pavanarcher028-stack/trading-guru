@@ -180,7 +180,7 @@ def batch_improve_and_validate_strategies(partial_fails, strategy_code):
             print("[PIPELINE] " + coin + " has " + str(len(failed_metrics)) + " failures — only fixing when exactly 1 fails skipping", flush=True)
             continue
         print("[PIPELINE] " + coin + " fixing only: " + str(failed_metrics), flush=True)
-        time.sleep(15)
+        time.sleep(45)
         new_code = improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item)
         if not new_code:
             print("[PIPELINE] Could not improve " + coin, flush=True)
