@@ -104,8 +104,27 @@ def improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item=No
                 return code
             print("[GOOGLE_AI] No valid function returned", flush=True)
             return None
-        elif r.status_code == 429:
-            print("[GOOGLE_AI] Rate limited skipping", flush=True)
+       elif r.status_code == 429:
+            print("[GOOGLE_AI] Rate limited - waiting 60 seconds and retrying...", flush=True)
+            time.sleep(60)
+            try:
+                r = requests.post(url, json=body, timeout=60)
+                if r.status_code == 200:
+                    full = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    if "```python" in full:
+                        code = full.split("```python")[1].split("```")[0].strip()
+                    elif "```" in full:
+                        code = full.split("```")[1].split("```")[0].strip()
+                    elif "def get_signals" in full:
+                        code = full[full.index("def get_signals"):].strip()
+                    else:
+                        code = full.strip()
+                    if "def get_signals" in code:
+                        print("[GOOGLE_AI] Strategy improved for " + coin + " on retry", flush=True)
+                        return code
+            except:
+                pass
+            print("[GOOGLE_AI] Rate limited even after retry - skipping", flush=True)
             return None
         else:
             print("[GOOGLE_AI] Error: " + str(r.status_code), flush=True)
@@ -180,7 +199,7 @@ def batch_improve_and_validate_strategies(partial_fails, strategy_code):
             print("[PIPELINE] " + coin + " has " + str(len(failed_metrics)) + " failures — only fixing when exactly 1 fails skipping", flush=True)
             continue
         print("[PIPELINE] " + coin + " fixing only: " + str(failed_metrics), flush=True)
-        time.sleep(45)
+        time.sleep(90)
         new_code = improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item)
         if not new_code:
             print("[PIPELINE] Could not improve " + coin, flush=True)
