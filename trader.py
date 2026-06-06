@@ -64,7 +64,8 @@ def get_balance():
         response = requests.post(
             BASE_URL + "/exchange/v1/users/balances",
             data=json_body,
-            headers=headers
+            headers=headers,
+            timeout=10
         )
         resp = response.json()
         if isinstance(resp, dict):

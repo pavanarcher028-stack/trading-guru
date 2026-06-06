@@ -65,7 +65,7 @@ tr:hover td{background:#1c2128}
 <div class="card"><h3>Recent Activity</h3><div id="activity" class="loading">Loading...</div></div>
 <div class="refresh-info">Auto-refreshes every 15s &middot; <span id="last-update">-</span></div>
 <script>
-function fetchAPI(endpoint){return fetch(endpoint).then(r=>{if(!r.ok)throw new Error(r.statusText);return r.json()})}
+function fetchAPI(endpoint,timeout){timeout=timeout||12000;const c=new AbortController();setTimeout(()=>c.abort(),timeout);return fetch(endpoint,{signal:c.signal}).then(r=>{if(!r.ok)throw new Error(r.statusText+' ('+r.status+')');return r.json()})}
 function escapeHTML(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 function render(){
 fetchAPI('/api/dashboard').then(d=>{
