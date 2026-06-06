@@ -141,6 +141,81 @@ def get_signals(df):
      signals[(stoch_ma < 20) & (stoch_ma.shift(1) < 20)] = 1
      signals[(stoch_ma > 80) & (stoch_ma.shift(1) > 80)] = -1
      return signals
+""",
+    ,"""
+def get_signals(df):
+    import pandas as pd
+    import numpy as np
+    SL_PCT = 2.0
+    TP_PCT = 4.0
+    close = df['close']
+    volume = df['volume']
+    returns = close.pct_change()
+    vol = returns.rolling(20).std()
+    norm_returns = returns / vol
+    signals = pd.Series(0, index=df.index)
+    vol_avg = volume.rolling(20).mean()
+    signals[(norm_returns > 1.0) & (volume > vol_avg)] = 1
+    signals[(norm_returns < -1.0) & (volume > vol_avg)] = -1
+    return signals
+""",
+    """
+def get_signals(df):
+    import pandas as pd
+    import numpy as np
+    SL_PCT = 1.5
+    TP_PCT = 3.0
+    close = df['close']
+    ema100 = close.ewm(span=100).mean()
+    mu = close.rolling(20).mean()
+    sigma = close.rolling(20).std()
+    zscore = (close - mu) / sigma
+    signals = pd.Series(0, index=df.index)
+    signals[(zscore < -1.0) & (close > ema100)] = 1
+    signals[(zscore > 1.0) & (close > ema100)] = -1
+    return signals
+""",
+    """
+def get_signals(df):
+    import pandas as pd
+    import numpy as np
+    SL_PCT = 2.5
+    TP_PCT = 5.0
+    close = df['close']
+    high = df['high']
+    low = df['low']
+    volume = df['volume']
+    tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
+    atr = tr.rolling(10).mean()
+    mid = close.rolling(10).mean()
+    upper = mid + atr
+    lower = mid - atr
+    vol_avg = volume.rolling(10).mean()
+    ema50 = close.ewm(span=50).mean()
+    signals = pd.Series(0, index=df.index)
+    signals[(close < lower) & (volume > vol_avg) & (close > ema50)] = 1
+    signals[(close > upper) & (volume > vol_avg)] = -1
+    return signals
+""",
+    """
+def get_signals(df):
+    import pandas as pd
+    import numpy as np
+    SL_PCT = 2.0
+    TP_PCT = 4.0
+    close = df['close']
+    volume = df['volume']
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0).rolling(7).mean()
+    loss = -delta.where(delta < 0, 0.0).rolling(7).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    vol_avg = volume.rolling(14).mean()
+    ema50 = close.ewm(span=50).mean()
+    signals = pd.Series(0, index=df.index)
+    signals[(rsi < 35) & (volume > vol_avg * 1.2) & (close > ema50)] = 1
+    signals[(rsi > 65) & (volume > vol_avg * 1.2)] = -1
+    return signals
 """
 ]
 
