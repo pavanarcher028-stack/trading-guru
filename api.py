@@ -245,11 +245,14 @@ class Handler(BaseHTTPRequestHandler):
             prices = {}
             pairs = {"BTC": "B-BTC_USDT", "ETH": "B-ETH_USDT", "BNB": "B-BNB_USDT", "SOL": "B-SOL_USDT", "XRP": "B-XRP_USDT"}
             for sym, pair in pairs.items():
-                r = req.get("https://public.coindcx.com/market_data/candles", params={"pair": pair, "interval": "1h", "limit": 1}, timeout=5)
-                if r.status_code == 200:
-                    data = r.json()
-                    if data and len(data) > 0:
-                        prices[sym] = float(data[-1]["close"])
+                try:
+                    r = req.get("https://public.coindcx.com/market_data/candles", params={"pair": pair, "interval": "1h", "limit": 1}, timeout=3)
+                    if r.status_code == 200:
+                        data = r.json()
+                        if data and len(data) > 0:
+                            prices[sym] = float(data[-1]["close"])
+                except Exception:
+                    pass
             return {"balance": None, "source": "unavailable", "prices": prices}
         except Exception:
             return {"balance": None, "source": "unavailable", "prices": {}}
@@ -262,3 +265,7 @@ def start_api():
     server = HTTPServer(("0.0.0.0", port), Handler)
     print("[API] Dashboard at http://0.0.0.0:" + str(port) + "/", flush=True)
     server.serve_forever()
+
+if __name__ == "__main__":
+    log_capture.install()
+    start_api()

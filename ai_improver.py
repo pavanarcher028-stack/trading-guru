@@ -76,84 +76,80 @@ def build_generation_prompt(market_summary, coins):
 
 
 def build_improvement_prompt(strategy_code, failed_metrics, coin, item):
-    sharpe = str(item.get("sharpe", "unknown")) if item else "unknown"
-    win_rate = str(item.get("win_rate", "unknown")) if item else "unknown"
-    max_drawdown = str(item.get("max_drawdown", "unknown")) if item else "unknown"
-    trades = str(item.get("trades", "unknown")) if item else "unknown"
+    sharpe = item.get("sharpe", "?") if item else "?"
+    win_rate = item.get("win_rate", "?") if item else "?"
+    max_drawdown = item.get("max_drawdown", "?") if item else "?"
+    trades = item.get("trades", "?") if item else "?"
 
-    passed_text = ""
-    failed_text = ""
+    targets = {
+        "sharpe": {"current": sharpe, "need": "0.5", "gap": "", "status": "", "fix": "Normalize signals by rolling volatility (divide signal by close.rolling(20).std()). Also tighten SL_PCT so smaller losses improve consistency."},
+        "win_rate": {"current": win_rate, "need": "55%", "gap": "", "status": "", "fix": "Add multi-factor confluence: require volume > 20-period average AND momentum confirmation (close > close.rolling(10).mean()). Add EMA trend filter to avoid counter-trend entries."},
+        "max_drawdown": {"current": max_drawdown, "need": "15%", "gap": "", "status": "", "fix": "Add trend filter: only enter when price > EMA 100. Tighten SL_PCT to 1.5 so each loss is smaller."},
+        "trades_count": {"current": trades, "need": "5", "gap": "", "status": "", "fix": "Use shorter rolling windows (10-20 periods). Lower z-score thresholds from 1.5 to 1.0 so more signals trigger."}
+    }
 
-    if item:
-        try:
-            if float(sharpe) >= 0.5:
-                passed_text += "  Sharpe: " + sharpe + " - PASSED do not change\n"
-            if float(win_rate) >= 55.0:
-                passed_text += "  Win rate: " + win_rate + "% - PASSED do not change\n"
-            if float(max_drawdown) <= 15.0:
-                passed_text += "  Drawdown: " + max_drawdown + "% - PASSED do not change\n"
-            if int(trades) >= 5:
-                passed_text += "  Trades: " + trades + " - PASSED do not change\n"
-        except:
-            pass
-
-    for metric in failed_metrics:
-        if metric == "sharpe":
-            failed_text += "FAILING - Sharpe: " + sharpe + " must reach above 0.5\n"
-            failed_text += "  Academic fix: Normalize signals using rolling volatility (Sharpe 1994)\n"
-            failed_text += "  Apply: signal = signal / close.rolling(20).std() to reduce noise\n"
-            failed_text += "  Also try: tighten SL_PCT to reduce loss size and improve consistency\n"
-        elif metric == "win_rate":
-            failed_text += "FAILING - Win rate: " + win_rate + "% must reach above 55%\n"
-            failed_text += "  Academic fix: Multi-factor confluence (Fama and French 1993)\n"
-            failed_text += "  Apply: require volume above 20-period average AND momentum confirmation\n"
-            failed_text += "  Also try: add EMA trend filter to avoid counter-trend trades\n"
-        elif metric == "max_drawdown":
-            failed_text += "FAILING - Drawdown: " + max_drawdown + "% must be below 15%\n"
-            failed_text += "  Academic fix: Trend filter for drawdown reduction (Faber 2007)\n"
-            failed_text += "  Apply: only buy when price is above EMA 100\n"
-            failed_text += "  Also try: tighten SL_PCT to 1.5 to limit individual loss size\n"
-        elif metric == "trades_count":
-            failed_text += "FAILING - Trades: " + trades + " must be at least 5\n"
-            failed_text += "  Fix: use shorter rolling windows 10 to 20 periods\n"
-            failed_text += "  Also try: lower z-score threshold from 1.5 to 1.0\n"
+    try:
+        for m, info in targets.items():
+            cur = float(info["current"])
+            need = float(info["need"].rstrip("%"))
+            if m == "max_drawdown":
+                passed = cur <= need
+                gap = need - cur
+                label = f"{cur}% ≤ {need}%"
+            else:
+                passed = cur >= need
+                gap = cur - need
+                label = f"{cur} ≥ {need}"
+            info["status"] = "PASS" if passed else "FAIL"
+            info["gap"] = f"{'+' if gap >= 0 else ''}{gap:.2f}" if isinstance(gap, float) else "?"
+    except:
+        pass
 
     prompt = SYSTEM_PROMPT + "\n\n"
-    prompt += "IMPROVEMENT MISSION: Fix the failing metric in this strategy for coin " + coin + "\n\n"
-    prompt += "STRATEGY PERFORMANCE REPORT:\n"
-    prompt += "Coin: " + coin + "\n"
-    prompt += "Timeframe: 1 hour candles\n"
-    prompt += "Data: 1000 candles tested\n\n"
-    prompt += "CURRENT TEST SCORES:\n"
-    prompt += "  Sharpe: " + sharpe + " (target above 0.5)\n"
-    prompt += "  Win rate: " + win_rate + "% (target above 55%)\n"
-    prompt += "  Drawdown: " + max_drawdown + "% (target below 15%)\n"
-    prompt += "  Trades: " + trades + " (target at least 5)\n\n"
-    prompt += "TESTS ALREADY PASSING - DO NOT TOUCH THESE:\n"
-    prompt += passed_text if passed_text else "  None passing yet\n"
-    prompt += "\n"
-    prompt += "TEST FAILING - FIX ONLY THIS ONE:\n"
-    prompt += failed_text + "\n"
-    prompt += "CURRENT STRATEGY CODE (this is working but one test failing):\n"
+    prompt += "=== IMPROVEMENT MISSION ===\n\n"
+    prompt += f"Fix the FAILING metrics in this strategy for coin {coin}\n\n"
+    prompt += "BACKTEST RESULTS (1000 candles, 1h timeframe):\n"
+    prompt += "-" * 50 + "\n"
+    prompt += f"  Metric         | Current | Target  | Gap    | Status\n"
+    prompt += "-" * 50 + "\n"
+    for m, info in targets.items():
+        prompt += f"  {m:14s} | {str(info['current']):7s} | {info['need']:7s} | {info['gap']:6s} | {info['status']}\n"
+    prompt += "-" * 50 + "\n\n"
+
+    prompt += "PASSING METRICS (do NOT change these):\n"
+    had_pass = False
+    for m, info in targets.items():
+        if info["status"] == "PASS":
+            prompt += f"  ✓ {m}: {info['current']} (keep as-is)\n"
+            had_pass = True
+    if not had_pass:
+        prompt += "  (none)\n"
+
+    prompt += "\nFAILING METRICS (FIX ONLY THESE):\n"
+    had_fail = False
+    for m in failed_metrics:
+        if m in targets:
+            prompt += f"  ✗ {m}: current={targets[m]['current']}, need ≥ {targets[m]['need']}\n"
+            prompt += f"    Recommended fix: {targets[m]['fix']}\n"
+            had_fail = True
+    if not had_fail:
+        prompt += "  (none - but needs more signals or better entries)\n"
+
+    prompt += "\nCURRENT STRATEGY CODE:\n"
     prompt += strategy_code + "\n\n"
-    prompt += "RESEARCH PAPERS TO REFERENCE FOR THIS FIX:\n"
-    prompt += "- Sharpe W. (1994) The Sharpe Ratio - Journal of Portfolio Management\n"
-    prompt += "- Lo A. (2002) The Statistics of Sharpe Ratios - Financial Analysts Journal\n"
-    prompt += "- Jegadeesh N. (1993) Returns to Buying Winners - Journal of Finance\n"
-    prompt += "- Fama E. French K. (1993) Common Risk Factors - Journal of Financial Economics\n"
-    prompt += "- Faber M. (2007) A Quantitative Approach to Tactical Asset Allocation - SSRN\n\n"
     prompt += "BACKTEST SYSTEM RULES:\n"
     prompt += "- Define SL_PCT and TP_PCT inside the function\n"
     prompt += "- For mean reversion: SL_PCT = 1.5 to 2.5, TP_PCT = 2.0 to 4.0\n"
     prompt += "- For momentum: SL_PCT = 3.0 to 5.0, TP_PCT = 6.0 to 12.0\n"
     prompt += "- Time stop exits after 48 candles\n\n"
     prompt += "STRICT RULES:\n"
-    prompt += "1. Fix ONLY the one failing test - do not change passing logic\n"
+    prompt += "1. Fix ONLY failing metrics - do not change passing logic\n"
     prompt += "2. Use ONLY pandas and numpy\n"
     prompt += "3. First two lines inside function: import pandas as pd and import numpy as np\n"
     prompt += "4. Define SL_PCT and TP_PCT inside the function\n"
     prompt += "5. Return pandas Series: 1=buy -1=sell 0=hold\n"
-    prompt += "6. Generate at least 10 signals over 1000 candles\n\n"
+    prompt += "6. Handle NaN with .fillna(0) or .dropna()\n"
+    prompt += "7. Generate at least 10 signals over 1000 candles\n\n"
     prompt += "Return ONLY the complete get_signals(df) function. No markdown. No explanation.\n"
     return prompt
 
@@ -213,61 +209,56 @@ def improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item=No
     return code
 
 
-def validate_with_nvidia(strategy_code, coin):
+def call_nvidia_for_improvement(prompt):
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
-        return {"valid": True, "errors": [], "fixed_code": ""}
+        print("[NVIDIA_AI] NVIDIA_API_KEY not set", flush=True)
+        return None
+    for attempt in range(3):
+        try:
+            r = requests.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={
+                    "Authorization": "Bearer " + api_key,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "deepseek-ai/deepseek-v4-pro",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 2000,
+                    "temperature": 0.3
+                },
+                timeout=120
+            )
+            if r.status_code == 200:
+                content = r.json()["choices"][0]["message"]["content"]
+                code = parse_code(content)
+                if code:
+                    return code
+                print("[NVIDIA_AI] No valid function in response", flush=True)
+                return None
+            elif r.status_code == 429:
+                wait = 30 * (attempt + 1)
+                print("[NVIDIA_AI] Rate limited - waiting " + str(wait) + "s attempt " + str(attempt + 1) + "/3", flush=True)
+                time.sleep(wait)
+                continue
+            else:
+                print("[NVIDIA_AI] Error " + str(r.status_code), flush=True)
+                return None
+        except Exception as e:
+            print("[NVIDIA_AI] Failed: " + str(e), flush=True)
+            return None
+    print("[NVIDIA_AI] All retries failed", flush=True)
+    return None
 
-    prompt = "You are the world's best hedge fund code reviewer at Renaissance Technologies.\n"
-    prompt += "You review Python trading strategy code with extreme precision.\n\n"
-    prompt += "Review this trading strategy function for coin " + coin + ":\n"
-    prompt += strategy_code + "\n\n"
-    prompt += "Check every line for:\n"
-    prompt += "1. Python syntax errors that will crash\n"
-    prompt += "2. Logic errors producing wrong buy/sell signals\n"
-    prompt += "3. Incorrect pandas or numpy usage\n"
-    prompt += "4. Missing imports inside function\n"
-    prompt += "5. Division by zero risks\n"
-    prompt += "6. NaN or infinity values not handled\n"
-    prompt += "7. Signals not returning 1, -1, or 0\n\n"
-    prompt += "If you find errors: fix the entire function and put it in fixed_code.\n"
-    prompt += "If no errors: leave fixed_code as empty string.\n\n"
-    prompt += "Reply ONLY in this exact JSON with no other text:\n"
-    prompt += "{\"valid\": true, \"errors\": [], \"fixed_code\": \"\"}\n"
 
-    try:
-        r = requests.post(
-            "https://integrate.api.nvidia.com/v1/chat/completions",
-            headers={
-                "Authorization": "Bearer " + api_key,
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "deepseek-ai/deepseek-v4-pro",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1500,
-                "temperature": 0.1
-            },
-            timeout=60
-        )
-        if r.status_code == 200:
-            content = r.json()["choices"][0]["message"]["content"]
-            try:
-                start = content.find("{")
-                end = content.rfind("}") + 1
-                result = json.loads(content[start:end])
-                if result.get("errors"):
-                    print("[NVIDIA] Errors found in " + coin + ": " + str(result.get("errors")), flush=True)
-                if result.get("fixed_code") and len(result.get("fixed_code", "")) > 10:
-                    print("[NVIDIA] Auto-fixed code for " + coin, flush=True)
-                    result["auto_fixed"] = True
-                return result
-            except:
-                return {"valid": True, "errors": [], "fixed_code": ""}
-        return {"valid": True, "errors": [], "fixed_code": ""}
-    except Exception as e:
-        print("[NVIDIA] Failed: " + str(e), flush=True)
-        return {"valid": True, "errors": [], "fixed_code": ""}
+def improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item=None):
+    print("[NVIDIA_AI] Building improvement prompt for " + coin + " fixing: " + str(failed_metrics), flush=True)
+    prompt = build_improvement_prompt(strategy_code, failed_metrics, coin, item)
+    code = call_nvidia_for_improvement(prompt)
+    if code:
+        print("[NVIDIA_AI] Strategy improved for " + coin, flush=True)
+    return code
 
 
 def batch_improve_and_validate_strategies(partial_fails, strategy_code):
@@ -275,27 +266,21 @@ def batch_improve_and_validate_strategies(partial_fails, strategy_code):
     for item in partial_fails:
         coin = item["coin"]
         failed_metrics = item["failed_metrics"]
-        if len(failed_metrics) != 1:
-            print("[PIPELINE] " + coin + " has " + str(len(failed_metrics)) + " failures - skipping, only fix when exactly 1 fails", flush=True)
-            continue
         print("[PIPELINE] Processing " + coin + " - fixing: " + str(failed_metrics), flush=True)
         print("[PIPELINE] Current scores - Sharpe: " + str(item.get("sharpe")) + " Win: " + str(item.get("win_rate")) + "% DD: " + str(item.get("max_drawdown")) + "% Trades: " + str(item.get("trades")), flush=True)
         time.sleep(90)
         new_code = improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item)
-        if not new_code:
-            print("[PIPELINE] Could not improve " + coin, flush=True)
-            continue
-        print("[PIPELINE] Sending to NVIDIA for validation...", flush=True)
-        validation = validate_with_nvidia(new_code, coin)
-        if not validation.get("valid", True):
-            if validation.get("fixed_code") and len(validation.get("fixed_code", "")) > 10:
-                print("[PIPELINE] NVIDIA auto-fixed errors for " + coin, flush=True)
-                new_code = validation["fixed_code"]
+        if new_code:
+            improved[coin] = new_code
+            print("[PIPELINE] " + coin + " improved by Gemini - ready for backtest", flush=True)
+        else:
+            print("[PIPELINE] Gemini failed for " + coin + " - trying NVIDIA fallback...", flush=True)
+            new_code = improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item)
+            if new_code:
+                improved[coin] = new_code
+                print("[PIPELINE] " + coin + " improved by NVIDIA fallback - ready for backtest", flush=True)
             else:
-                print("[PIPELINE] " + coin + " has unfixable errors - skipping", flush=True)
-                continue
-        improved[coin] = new_code
-        print("[PIPELINE] " + coin + " improved and validated - ready for backtest", flush=True)
+                print("[PIPELINE] Both Gemini and NVIDIA failed for " + coin + " - skipping", flush=True)
     return improved
 
 

@@ -30,6 +30,8 @@ _balance_cache = {"value": None, "time": 0}
 _balance_cache_lock = threading.Lock()
 
 def sign_request(body_dict):
+    if not API_KEY or not API_SECRET:
+        raise ValueError("CoinDCX API keys not configured")
     json_body = json.dumps(body_dict, separators=(",", ":"))
     signature = hmac.new(
         bytes(API_SECRET, "utf-8"),

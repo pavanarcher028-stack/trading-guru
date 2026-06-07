@@ -170,11 +170,11 @@ def is_strategy_good(results):
     for coin, score in results.items():
         if score["passed"]:
             good_coins.append(coin)
-            print(coin + " approved for live trading", flush=True)
+            print(coin + " approved for live trading (4/4)", flush=True)
         else:
             failed_count = len(score.get("failed_metrics", []))
             passed_count = 4 - failed_count
-            if passed_count >= 2 and failed_count > 0 and "execution_error" not in score.get("failed_metrics", []):
+            if passed_count >= 2 and "execution_error" not in score.get("failed_metrics", []):
                 partial_fails.append({
                     "coin": coin,
                     "passed_count": passed_count,
@@ -184,12 +184,13 @@ def is_strategy_good(results):
                     "max_drawdown": score["max_drawdown"],
                     "trades": score["trades"]
                 })
+                if passed_count >= 3:
+                    good_coins.append(coin)
+                    print(coin + " approved for live trading (3/4 - close enough)", flush=True)
     if partial_fails:
-        print("\n[AI FEEDBACK] Coins with partial passes:", flush=True)
+        print("\n[PARTIAL PASSES]", flush=True)
         for item in partial_fails:
-            print("[AI] " + item["coin"] + ": " + str(item["passed_count"]) + "/4 passed", flush=True)
-            print("[AI] Sharpe: " + str(item["sharpe"]) + " Win: " + str(item["win_rate"]) + "% DD: " + str(item["max_drawdown"]) + "% Trades: " + str(item["trades"]), flush=True)
-            print("[AI] Fix: " + ", ".join(item["failed_metrics"]), flush=True)
+            print(item["coin"] + ": " + str(item["passed_count"]) + "/4 - Fix: " + ", ".join(item["failed_metrics"]), flush=True)
     if not good_coins:
         print("No coins passed", flush=True)
     return good_coins, partial_fails

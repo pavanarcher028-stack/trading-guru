@@ -338,15 +338,14 @@ def trading_loop(all_data):
 
 def run_agent():
     global active_strategy, active_good_coins
-    if not os.environ.get("COINDCX_API_KEY"):
-        print("[ERROR] COINDCX_API_KEY missing", flush=True)
-        sys.exit(1)
-    if not os.environ.get("COINDCX_SECRET"):
-        print("[ERROR] COINDCX_SECRET missing", flush=True)
-        sys.exit(1)
+    threading.Thread(target=start_api, daemon=True).start()
+    if not os.environ.get("COINDCX_API_KEY") or not os.environ.get("COINDCX_SECRET"):
+        print("[AGENT] CoinDCX API keys not set - website mode only. Trading disabled.", flush=True)
+        while True:
+            time.sleep(3600)
+        return
     print("[AGENT] All keys found", flush=True)
     print("[AGENT] AI Providers: Google Gemini (Code Gen) + NVIDIA NIM (Validation)", flush=True)
-    threading.Thread(target=start_api, daemon=True).start()
     loop_count = 0
     while True:
         try:
