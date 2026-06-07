@@ -175,28 +175,20 @@ def call_gemini(prompt):
         return None
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + api_key
     body = {"contents": [{"parts": [{"text": prompt}]}]}
-    for attempt in range(3):
-        try:
-            r = requests.post(url, json=body, timeout=60)
-            if r.status_code == 200:
-                full = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                code = parse_code(full)
-                if code:
-                    return code
-                print("[GOOGLE_AI] No valid function in response", flush=True)
-                return None
-            elif r.status_code == 429:
-                wait = 60 * (attempt + 1)
-                print("[GOOGLE_AI] Rate limited - waiting " + str(wait) + " seconds attempt " + str(attempt + 1) + "/3", flush=True)
-                time.sleep(wait)
-                continue
-            else:
-                print("[GOOGLE_AI] Error: " + str(r.status_code), flush=True)
-                return None
-        except Exception as e:
-            print("[GOOGLE_AI] Failed: " + str(e), flush=True)
-            return None
-    print("[GOOGLE_AI] All retries failed", flush=True)
+    try:
+        r = requests.post(url, json=body, timeout=60)
+        if r.status_code == 200:
+            full = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            code = parse_code(full)
+            if code:
+                return code
+            print("[GOOGLE_AI] No valid function in response", flush=True)
+        elif r.status_code == 429:
+            print("[GOOGLE_AI] Rate limited - skipping to fallback", flush=True)
+        else:
+            print("[GOOGLE_AI] Error: " + str(r.status_code), flush=True)
+    except Exception as e:
+        print("[GOOGLE_AI] Failed: " + str(e), flush=True)
     return None
 
 
@@ -206,7 +198,8 @@ def improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item=No
     code = call_gemini(prompt)
     if code:
         print("[GOOGLE_AI] Strategy improved for " + coin, flush=True)
-    return code
+        return code, None
+    return None, "Gemini rate limited or failed - check API key and quota"
 
 
 def call_nvidia_for_improvement(prompt):
@@ -252,10 +245,17 @@ def call_nvidia_for_improvement(prompt):
     return None
 
 
-def improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item=None):
+def improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item=None, prev_error=None):
     print("[NVIDIA_AI] Building improvement prompt for " + coin + " fixing: " + str(failed_metrics), flush=True)
     prompt = build_improvement_prompt(strategy_code, failed_metrics, coin, item)
-    code = call_nvidia_for_improvement(prompt)
+    if prev_error:
+        prompt += "\nPREVIOUS ATTEMPT ERROR:\n"
+        prompt += prev_error + "\n\n"
+        prompt += "The previous AI provider failed with the above error. Analyze this error and make sure your fix avoids it.\n"
+        prompt += "If the error mentions rate limiting, connection timeout, or auth - ignore it and just produce a working strategy.\n"
+        prompt += "If the error was a backtest failure, specifically fix that metric.\n"
+        prompt += "Return ONLY the complete get_signals(df) function. No markdown. No explanation.\n"
+    code = call_nvidia_for_improvement(prompt))
     if code:
         print("[NVIDIA_AI] Strategy improved for " + coin, flush=True)
     return code
@@ -272,13 +272,13 @@ def batch_improve_and_validate_strategies(partial_fails, strategy_code):
         print("[PIPELINE] Processing " + coin + " - fixing: " + str(failed_metrics), flush=True)
         print("[PIPELINE] Current scores - Sharpe: " + str(item.get("sharpe")) + " Win: " + str(item.get("win_rate")) + "% DD: " + str(item.get("max_drawdown")) + "% Trades: " + str(item.get("trades")), flush=True)
         time.sleep(90)
-        new_code = improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item)
+        new_code, gemini_error = improve_strategy_with_google_ai(strategy_code, failed_metrics, coin, item)
         if new_code:
             improved[coin] = new_code
             print("[PIPELINE] " + coin + " improved by Gemini - ready for backtest", flush=True)
         else:
             print("[PIPELINE] Gemini failed for " + coin + " - trying NVIDIA fallback...", flush=True)
-            new_code = improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item)
+            new_code = improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item, prev_error=gemini_error)
             if new_code:
                 improved[coin] = new_code
                 print("[PIPELINE] " + coin + " improved by NVIDIA fallback - ready for backtest", flush=True)
