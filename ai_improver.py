@@ -261,7 +261,8 @@ def improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item=None,
     return code
 
 
-def batch_improve_and_validate_strategies(partial_fails, strategy_code):
+def batch_improve_and_validate_strategies(partial_fails, strategy_code, all_data):
+    from backtest import run_backtest, is_strategy_good
     improved = {}
     for item in partial_fails:
         coin = item["coin"]
@@ -280,8 +281,31 @@ def batch_improve_and_validate_strategies(partial_fails, strategy_code):
             print("[PIPELINE] Gemini failed for " + coin + " - trying NVIDIA fallback...", flush=True)
             new_code = improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item, prev_error=gemini_error)
             if new_code:
-                improved[coin] = new_code
-                print("[PIPELINE] " + coin + " improved by NVIDIA fallback - ready for backtest", flush=True)
+                subset = {coin: all_data[coin]} if coin in all_data else {}
+                if subset:
+                    bt_results = run_backtest(new_code, subset)
+                    bt_good, _ = is_strategy_good(bt_results)
+                    if coin in bt_good:
+                        improved[coin] = new_code
+                        print("[PIPELINE] " + coin + " improved by NVIDIA - backtest PASSED", flush=True)
+                    else:
+                        score = bt_results.get(coin, {})
+                        err_detail = "Backtest failed: " + ", ".join(score.get("failed_metrics", ["unknown"]))
+                        err_detail += " | Sharpe: " + str(score.get("sharpe", "?"))
+                        err_detail += " Win: " + str(score.get("win_rate", "?")) + "%"
+                        err_detail += " DD: " + str(score.get("max_drawdown", "?")) + "%"
+                        print("[PIPELINE] " + coin + " NVIDIA code failed backtest - retrying with error context...", flush=True)
+                        retry_code = improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item, prev_error=err_detail)
+                        if retry_code:
+                            retry_results = run_backtest(retry_code, subset)
+                            retry_good, _ = is_strategy_good(retry_results)
+                            if coin in retry_good:
+                                improved[coin] = retry_code
+                                print("[PIPELINE] " + coin + " NVIDIA retry - backtest PASSED", flush=True)
+                            else:
+                                print("[PIPELINE] " + coin + " NVIDIA retry also failed backtest - skipping", flush=True)
+                        else:
+                            print("[PIPELINE] " + coin + " NVIDIA retry failed to generate code - skipping", flush=True)
             else:
                 print("[PIPELINE] Both Gemini and NVIDIA failed for " + coin + " - skipping", flush=True)
     return improved

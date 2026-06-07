@@ -258,20 +258,16 @@ def search_strategy(all_data, coins):
                     print("[SEARCH] All coins approved", flush=True)
                     break
             if partial_fails:
-                improved = batch_improve_and_validate_strategies(partial_fails, strat)
+                improved = batch_improve_and_validate_strategies(partial_fails, strat, all_data)
                 if improved:
                     for coin, new_code in improved.items():
-                        subset = {coin: all_data[coin]}
-                        new_results = run_backtest(new_code, subset)
-                        new_good, _ = is_strategy_good(new_results)
-                        if coin in new_good:
-                            with lock:
-                                if coin not in active_good_coins:
-                                    active_good_coins.append(coin)
-                                    active_strategy = new_code
-                                    save_strategy(new_code, active_good_coins)
-                                    print("[SEARCH] AI improved strategy approved " + coin, flush=True)
-                            coins = [c for c in coins if c not in active_good_coins]
+                        with lock:
+                            if coin not in active_good_coins:
+                                active_good_coins.append(coin)
+                                active_strategy = new_code
+                                save_strategy(new_code, active_good_coins)
+                                print("[SEARCH] AI improved strategy approved " + coin, flush=True)
+                        coins = [c for c in coins if c not in active_good_coins]
         except Exception as e:
             print("[SEARCH] Strategy " + str(idx + 1) + " error: " + str(e), flush=True)
         time.sleep(2)
