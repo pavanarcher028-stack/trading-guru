@@ -255,7 +255,7 @@ def improve_strategy_with_nvidia(strategy_code, failed_metrics, coin, item=None,
         prompt += "If the error mentions rate limiting, connection timeout, or auth - ignore it and just produce a working strategy.\n"
         prompt += "If the error was a backtest failure, specifically fix that metric.\n"
         prompt += "Return ONLY the complete get_signals(df) function. No markdown. No explanation.\n"
-    code = call_nvidia_for_improvement(prompt))
+    code = call_nvidia_for_improvement(prompt)
     if code:
         print("[NVIDIA_AI] Strategy improved for " + coin, flush=True)
     return code
