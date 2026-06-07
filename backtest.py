@@ -184,7 +184,7 @@ def is_strategy_good(results):
                     "max_drawdown": score["max_drawdown"],
                     "trades": score["trades"]
                 })
-                if passed_count >= 3:
+                if passed_count >= 3 and score["sharpe"] >= 0:
                     good_coins.append(coin)
                     print(coin + " approved for live trading (3/4 - close enough)", flush=True)
     if partial_fails:
