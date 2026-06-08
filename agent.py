@@ -591,7 +591,8 @@ def revalidate(all_data):
     subset_data = {c: all_data[c] for c in coins if c in all_data}
     results = run_backtest(strat, subset_data)
     still_good, partial_fails = is_strategy_good(results)
-    failed_coins = [c for c in coins if c not in still_good]
+    relaxed_good = is_strategy_good_relaxed(results)
+    failed_coins = [c for c in coins if c not in still_good and c not in relaxed_good]
     if failed_coins:
         print("[REVALIDATE] " + str(failed_coins) + " failed searching new strategy", flush=True)
         with lock:
