@@ -244,22 +244,6 @@ def execute_strategy(strategy_code, all_data, good_coins):
                         save_positions(pos)
                     print("[TRADER] Position opened for " + coin + " @ Rs." + str(round(current_price, 2)) + " SL:" + str(sl_pct) + "% TP:" + str(tp_pct) + "%", flush=True)
                 results[coin] = {"action": "buy", "order": order, "price": current_price, "quantity": quantity}
-            elif last_signal == -1:
-                coin_sym = coin_symbol.replace("INR", "").replace("USDT", "")
-                held = get_coin_balance(coin_sym)
-                if held > 0:
-                    quantity = round(held, 6)
-                    print("[TRADER] SELL " + coin + " qty=" + str(quantity), flush=True)
-                    order = place_order("sell", coin_symbol, quantity)
-                    if coin in positions:
-                        with positions_lock:
-                            pos = load_positions()
-                            pos.pop(coin, None)
-                            save_positions(pos)
-                    results[coin] = {"action": "sell", "order": order, "price": current_price, "quantity": quantity}
-                else:
-                    print("[TRADER] SELL signal but no " + coin + " held - skipping", flush=True)
-                    results[coin] = {"action": "hold", "order": None}
             elif coin in positions:
                 print("[TRADER] HOLD " + coin + " (position open, waiting for SL/TP)", flush=True)
                 results[coin] = {"action": "hold", "order": None}
