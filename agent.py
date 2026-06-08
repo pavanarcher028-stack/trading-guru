@@ -7,7 +7,7 @@ import log_capture; log_capture.install()
 from api import start_api
 from strategy_store import save_strategy, load_strategy
 from data import get_top5_ohlcv, get_market_summary
-from backtest import run_backtest, is_strategy_good, get_metric_statistics
+from backtest import run_backtest, is_strategy_good
 from trader import execute_strategy
 from monitor import needs_regeneration, bump_strategy_version, get_performance_summary
 from ai_improver import (
@@ -646,6 +646,7 @@ def run_agent():
         return
     print("[AGENT] All keys found", flush=True)
     print("[AGENT] AI Providers: Google Gemini (Code Gen) + NVIDIA NIM (Validation)", flush=True)
+    trading_thread_started = False
     loop_count = 0
     while True:
         try:
@@ -656,13 +657,17 @@ def run_agent():
                 print("[AGENT] No data, waiting 10 mins", flush=True)
                 time.sleep(600)
                 continue
-            get_metric_statistics()
             saved_code, saved_coins = load_strategy()
             if saved_code and saved_coins:
                 with lock:
                     active_strategy = saved_code
                     active_good_coins = saved_coins
                 print("[AGENT] Resuming saved strategy for: " + str(saved_coins), flush=True)
+                if active_strategy and active_good_coins:
+                    proof = run_backtest(active_strategy, {c: all_data[c] for c in active_good_coins if c in all_data})
+                    for c, s in proof.items():
+                        status = "PASS" if s["passed"] else "FAIL"
+                        print("[PROOF] " + c + " [" + status + "] Sharpe: " + str(s["sharpe"]) + " Win: " + str(s["win_rate"]) + "% DD: " + str(s["max_drawdown"]) + "% Trades: " + str(s["trades"]), flush=True)
                 remaining = [c for c in ["BTC", "ETH", "BNB", "SOL", "XRP"] if c not in saved_coins]
                 if remaining:
                     search_thread = threading.Thread(
@@ -683,11 +688,13 @@ def run_agent():
                     daemon=True
                 )
                 search_thread.start()
-            threading.Thread(
-                target=trading_loop,
-                args=(all_data,),
-                daemon=True
-            ).start()
+            if not trading_thread_started:
+                threading.Thread(
+                    target=trading_loop,
+                    args=(all_data,),
+                    daemon=True
+                ).start()
+                trading_thread_started = True
             if search_thread:
                 search_thread.join()
             print("[AGENT] Search done. Sleeping 5 mins", flush=True)

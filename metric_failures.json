@@ -1,0 +1,46 @@
+{
+  "BTC": {
+    "failures": {
+      "sharpe": 292,
+      "win_rate": 183,
+      "trades_count": 8
+    },
+    "total_attempts": 292
+  },
+  "ETH": {
+    "failures": {
+      "sharpe": 227,
+      "win_rate": 202,
+      "max_drawdown": 189,
+      "trades_count": 17
+    },
+    "total_attempts": 227
+  },
+  "BNB": {
+    "failures": {
+      "sharpe": 228,
+      "win_rate": 202,
+      "max_drawdown": 80,
+      "trades_count": 22
+    },
+    "total_attempts": 229
+  },
+  "SOL": {
+    "failures": {
+      "sharpe": 382,
+      "win_rate": 397,
+      "max_drawdown": 199,
+      "trades_count": 57
+    },
+    "total_attempts": 415
+  },
+  "XRP": {
+    "failures": {
+      "sharpe": 113,
+      "max_drawdown": 21,
+      "win_rate": 126,
+      "trades_count": 10
+    },
+    "total_attempts": 148
+  }
+}
