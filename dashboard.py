@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 import log_capture
@@ -9,231 +10,337 @@ log_capture.install()
 
 PORT = int(os.environ.get("DASHBOARD_PORT", 8081))
 
-DASHBOARD_HTML = """<!DOCTYPE html>
+DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Trading Agent 500 — Live Dashboard</title>
+<title>trading-agent500 — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
 <style>
+:root{--bg:#0a0e17;--surface:#111827;--surface2:#1a2332;--border:#1e2d3d;--text:#e2e8f0;--muted:#64748b;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--orange:#f59e0b;--cyan:#06b6d4;--radius:12px;--shadow:0 1px 3px rgba(0,0,0,.4)}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;padding:20px}
-h1{font-size:24px;margin-bottom:4px;color:#58a6ff}
-.subtitle{font-size:13px;color:#8b949e;margin-bottom:20px}
-h2{font-size:15px;margin-bottom:10px;color:#8b949e;text-transform:uppercase;letter-spacing:1px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:20px}
-.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px}
-.card h3{font-size:13px;color:#8b949e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
-.flex{display:flex;gap:12px;flex-wrap:wrap}
-.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
-.badge-pass{background:#003d1a;color:#3fb950;border:1px solid #238636}
-.badge-fail{background:#3d0000;color:#f85149;border:1px solid #da3633}
-.badge-live{background:#002d3d;color:#58a6ff;border:1px solid #1f6feb}
-.badge-pending{background:#3d2e00;color:#d29922;border:1px solid #9e6a03}
-.stat-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #21262d;font-size:13px}
-.stat-row:last-child{border:none}
-.stat-label{color:#8b949e}
-.stat-value{font-weight:500}
-.green{color:#3fb950}
-.red{color:#f85149}
-.orange{color:#d29922}
-.blue{color:#58a6ff}
-pre{background:#010409;padding:12px;border-radius:6px;font-size:11px;line-height:1.5;overflow-x:auto;border:1px solid #21262d;font-family:'Cascadia Code','Fira Code','Consolas',monospace;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto}
-.mono{font-family:'Cascadia Code','Fira Code','Consolas',monospace;font-size:12px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;padding:6px 8px;color:#8b949e;border-bottom:2px solid #30363d;font-size:10px;text-transform:uppercase}
-td{padding:6px 8px;border-bottom:1px solid #21262d}
-tr:hover td{background:#1c2128}
-.log-box{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px;max-height:300px;overflow-y:auto;font-family:'Cascadia Code','Fira Code','Consolas',monospace;font-size:11px;line-height:1.5}
-.log-box div{padding:1px 4px;white-space:pre-wrap;word-break:break-all}
-.log-box div:nth-child(odd){background:#010409}
-.tab-bar{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
-.tab{padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #30363d;background:transparent;color:#8b949e}
-.tab.active{background:#1f6feb;color:#fff;border-color:#1f6feb;font-weight:600}
-.tab:hover:not(.active){background:#1c2128}
+body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);padding:24px 0;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sidebar-logo{font-size:20px;font-weight:700;padding:0 20px 24px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.sidebar-logo span{color:var(--accent)}
+.sidebar-nav{padding:8px 12px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;transition:.15s;text-decoration:none;border:none;background:none;width:100%;text-align:left}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:var(--accent);color:#fff;box-shadow:0 0 12px rgba(59,130,246,.3)}
+.nav-item .icon{font-size:18px;width:22px;text-align:center}
+.main{flex:1;padding:28px 32px;overflow-y:auto;max-width:1400px}
 .page{display:none}
 .page.active{display:block}
-.refresh-info{text-align:center;margin-top:20px;font-size:12px;color:#484f58}
-.loading{text-align:center;padding:30px;color:#484f58}
+h1{font-size:28px;font-weight:700;margin-bottom:4px}
+.subtitle{color:var(--muted);font-size:14px;margin-bottom:24px}
+.grid{display:grid;gap:16px;margin-bottom:20px}
+.grid-2{grid-template-columns:1fr 1fr}
+.grid-3{grid-template-columns:1fr 1fr 1fr}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.card-header{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px}
+.card-value{font-size:28px;font-weight:700}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px}
+.stat-row:last-child{border-bottom:none}
+.stat-label{color:var(--muted)}
+.stat-value{font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.badge-green{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}
+.badge-red{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25)}
+.badge-blue{background:rgba(59,130,246,.12);color:var(--accent);border:1px solid rgba(59,130,246,.25)}
+.badge-orange{background:rgba(245,158,11,.12);color:var(--orange);border:1px solid rgba(245,158,11,.25)}
+.badge-cyan{background:rgba(6,182,212,.12);color:var(--cyan);border:1px solid rgba(6,182,212,.25)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 8px;color:var(--muted);border-bottom:2px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+td{padding:10px 8px;border-bottom:1px solid var(--border)}
+tr:hover td{background:var(--surface2)}
+pre.code{background:#050a14;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:12px;line-height:1.6;overflow:auto;max-height:500px;font-family:'JetBrains Mono','Fira Code','Consolas',monospace;white-space:pre-wrap;word-break:break-all;color:#a5b4fc}
+pre.code .kw{color:#c084fc}pre.code .fn{color:#22d3ee}pre.code .str{color:#86efac}pre.code .cm{color:#6b7280}pre.code .num{color:#fbbf24}
+.log-box{background:#050a14;border:1px solid var(--border);border-radius:8px;padding:12px;max-height:400px;overflow-y:auto;font-size:12px;line-height:1.5;font-family:'JetBrains Mono','Fira Code','Consolas',monospace}
+.log-line{padding:2px 8px;white-space:pre-wrap;word-break:break-all;border-radius:3px}
+.log-line:nth-child(odd){background:rgba(255,255,255,.02)}
+.log-line:hover{background:rgba(255,255,255,.04)}
+.coin-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:500;margin:2px}
+.coin-pill.live{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);color:var(--accent)}
+.coin-pill.pass{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:var(--green)}
+.coin-pill.fail{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:var(--red)}
+.coin-pill .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.coin-pill.live .dot{background:var(--accent);animation:pulse 1.5s infinite}
+.coin-pill.pass .dot{background:var(--green)}
+.coin-pill.fail .dot{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.empty{text-align:center;padding:40px;color:var(--muted);font-size:14px}
+.loading{text-align:center;padding:30px;color:var(--muted)}
+.loading::after{content:'';display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-left:8px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.refresh-bar{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-top:20px;font-size:13px;color:var(--muted)}
+.refresh-bar .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+.hero{background:linear-gradient(135deg,var(--surface),var(--surface2));border:1px solid var(--border);border-radius:var(--radius);padding:28px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
+.hero h2{font-size:22px;font-weight:700}
+.hero p{color:var(--muted);font-size:14px;margin-top:4px}
+.hero-status{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
+.hero-status .dot{width:10px;height:10px;border-radius:50%}
+.hero-status .dot.green{background:var(--green);box-shadow:0 0 10px rgba(34,197,94,.5)}
+.hero-status .dot.red{background:var(--red);box-shadow:0 0 10px rgba(239,68,68,.5)}
+.hero-status .dot.yellow{background:var(--orange);box-shadow:0 0 10px rgba(245,158,11,.5)}
+.mb-2{margin-bottom:16px}
+@media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}.sidebar{width:56px;overflow:hidden}.sidebar-logo{font-size:0;padding:16px 0;text-align:center}.sidebar-logo::after{content:'TA5';font-size:16px;font-weight:700;color:var(--accent)}.nav-item span.nav-label{display:none}.nav-item{padding:12px;justify-content:center}.nav-item .icon{font-size:20px;margin:0}.main{padding:16px}}
 </style>
 </head>
 <body>
-<h1>trading-agent500</h1>
-<div class="subtitle">Live Dashboard &middot; <span id="update-time">-</span></div>
-
-<div class="tab-bar">
-<div class="tab active" onclick="switchTab('overview')">Overview</div>
-<div class="tab" onclick="switchTab('strategy')">Strategy Code</div>
-<div class="tab" onclick="switchTab('backtests')">Backtest History</div>
-<div class="tab" onclick="switchTab('positions')">Positions</div>
-<div class="tab" onclick="switchTab('trades')">Trade Log</div>
-<div class="tab" onclick="switchTab('activity')">Activity Log</div>
+<div class="layout">
+<nav class="sidebar">
+<div class="sidebar-logo">trading<span>agent</span>500</div>
+<div class="sidebar-nav">
+<button class="nav-item active" data-page="overview"><span class="icon">&#9679;</span><span class="nav-label">Overview</span></button>
+<button class="nav-item" data-page="strategy"><span class="icon">&#128220;</span><span class="nav-label">Strategy</span></button>
+<button class="nav-item" data-page="trades"><span class="icon">&#128202;</span><span class="nav-label">Trades</span></button>
+<button class="nav-item" data-page="positions"><span class="icon">&#128188;</span><span class="nav-label">Positions</span></button>
+<button class="nav-item" data-page="backtests"><span class="icon">&#128200;</span><span class="nav-label">Backtests</span></button>
+<button class="nav-item" data-page="activity"><span class="icon">&#128163;</span><span class="nav-label">Activity</span></button>
 </div>
-
+</nav>
+<div class="main">
 <div id="page-overview" class="page active">
-<div class="grid">
-<div class="card"><h3>Balance</h3><div id="balance" class="loading">Loading...</div></div>
-<div class="card"><h3>Performance Summary</h3><div id="perf-summary" class="loading">Loading...</div></div>
+<div class="hero">
+<div><h2 id="hero-title">trading-agent500</h2><p id="hero-subtitle">Loading agent status...</p></div>
+<div id="hero-status" class="hero-status"><span class="dot yellow"></span> Initializing...</div>
 </div>
-<div class="card"><h3>Coin Status</h3><div id="coin-status" class="loading">Loading...</div></div>
+<div class="grid grid-4 mb-2">
+<div class="card"><div class="card-header">Total Trades</div><div class="card-value" id="stat-trades" style="color:var(--accent)">-</div></div>
+<div class="card"><div class="card-header">Win Rate</div><div class="card-value" id="stat-winrate">-</div></div>
+<div class="card"><div class="card-header">Total P&amp;L</div><div class="card-value" id="stat-pnl">-</div></div>
+<div class="card"><div class="card-header">Consec. Losses</div><div class="card-value" id="stat-consec">-</div></div>
+</div>
+<div class="grid grid-2 mb-2">
+<div class="card"><div class="card-header">Balance</div><div id="balance-display" class="loading"></div></div>
+<div class="card"><div class="card-header">Active Coins</div><div id="coins-display" class="loading"></div></div>
+</div>
+<div class="card"><div class="card-header">Current Positions</div><div id="positions-mini" class="loading"></div></div>
 </div>
 
 <div id="page-strategy" class="page">
-<div class="card"><h3>Active Strategy Code</h3><div id="strategy-code" class="loading">Loading...</div></div>
+<div class="card">
+<div class="card-header">Active Strategy</div>
+<div id="strategy-info" class="loading"></div>
+<div style="margin-top:12px"><pre class="code" id="strategy-code">Loading...</pre></div>
 </div>
-
-<div id="page-backtests" class="page">
-<div class="card"><h3>Metric Failures History</h3><div id="backtest-history" class="loading">Loading...</div></div>
-</div>
-
-<div id="page-positions" class="page">
-<div class="card"><h3>Open Positions</h3><div id="open-positions" class="loading">Loading...</div></div>
 </div>
 
 <div id="page-trades" class="page">
-<div class="card"><h3>Trade History</h3><div id="trade-history" class="loading">Loading...</div></div>
+<div class="card">
+<div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+<span>Trade History</span>
+<span id="trade-count" style="font-size:11px;color:var(--muted);font-weight:400"></span>
+</div>
+<div id="trades-table" class="loading"></div>
+</div>
+</div>
+
+<div id="page-positions" class="page">
+<div class="card">
+<div class="card-header">Open Positions</div>
+<div id="positions-full" class="loading"></div>
+</div>
+</div>
+
+<div id="page-backtests" class="page">
+<div class="card">
+<div class="card-header">Backtest Metrics — Per Coin Failure Counts</div>
+<div id="backtests-content" class="loading"></div>
+</div>
 </div>
 
 <div id="page-activity" class="page">
-<div class="card"><h3>Recent Activity</h3><div id="activity-log" class="loading">Loading...</div></div>
+<div class="card">
+<div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+<span>Live Activity Log</span>
+<span id="log-count" style="font-size:11px;color:var(--muted);font-weight:400"></span>
+</div>
+<div id="activity-box" class="loading"></div>
+</div>
 </div>
 
-<div class="refresh-info">Auto-refreshes every 10s</div>
+<div class="refresh-bar">
+<div class="spinner"></div>
+<span>Auto-refreshes every <strong>10s</strong></span>
+<span style="margin-left:auto;color:var(--accent)" id="update-time">-</span>
+</div>
+</div>
+</div>
 
 <script>
-function switchTab(name){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById('page-'+name).classList.add('active');event.target.classList.add('active')}
-function escapeHTML(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
-function fmtNum(n){return Number(n).toLocaleString('en-IN',{minimumFractionDigits:2})}
-function fmtPct(n){return Number(n).toFixed(2)+'%'}
+function q(s){return document.querySelector(s)}
+function qa(s){return document.querySelectorAll(s)}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function num(n,d){return Number(n).toLocaleString('en-IN',{minimumFractionDigits:d??2})}
+async function get(p){return fetch(p).then(r=>r.json())}
+function updateTime(){document.getElementById('update-time').textContent=new Date().toLocaleTimeString()}
 
-async function loadAll(){
+qa('.nav-item').forEach(el=>{
+el.addEventListener('click',()=>{
+qa('.nav-item').forEach(e=>e.classList.remove('active'));
+qa('.page').forEach(e=>e.classList.remove('active'));
+el.classList.add('active');
+document.getElementById('page-'+el.dataset.page).classList.add('active');
+});
+});
+
+async function loadOverview(){
 try{
-document.getElementById('update-time').textContent=new Date().toLocaleTimeString();
-const d=await fetch('/api/dashboard').then(r=>r.json());
-
-const balDiv=document.getElementById('balance');
-if(d.balance!==null){
-balDiv.innerHTML='<div style="font-size:32px;font-weight:700;color:#58a6ff;margin:8px 0">\u20b9'+fmtNum(d.balance)+'</div><div class="stat-row"><span class="stat-label">Source</span><span class="stat-value">'+escapeHTML(d.balance_source)+'</span></div>';
-}else{balDiv.innerHTML='<div style="color:#f85149;padding:10px">Balance unavailable (no API keys or exchange down)</div>'}
-
-const perf=d.performance||{};
-document.getElementById('perf-summary').innerHTML=
-'<div class="stat-row"><span class="stat-label">Total Trades</span><span class="stat-value">'+(perf.total_trades||0)+'</span></div>'+
-'<div class="stat-row"><span class="stat-label">Win Rate</span><span class="stat-value '+(perf.win_rate>=55?'green':'red')+'">'+(perf.win_rate||0)+'%</span></div>'+
-'<div class="stat-row"><span class="stat-label">Total PnL</span><span class="stat-value '+(perf.total_pnl>=0?'green':'red')+'">\u20b9'+fmtNum(perf.total_pnl||0)+'</span></div>'+
-'<div class="stat-row"><span class="stat-label">Wins / Losses</span><span class="stat-value"><span class="green">'+(perf.wins||0)+'</span> / <span class="red">'+(perf.losses||0)+'</span></span></div>'+
-'<div class="stat-row"><span class="stat-label">Consec. Losses</span><span class="stat-value '+(perf.consecutive_losses>=3?'red':'orange')+'">'+(perf.consecutive_losses||0)+'</span></div>'+
-'<div class="stat-row"><span class="stat-label">Strategy Version</span><span class="stat-value blue">v'+(perf.strategy_version||1)+'</span></div>';
-
-const coinDiv=document.getElementById('coin-status');
-let coinHTML='<div class="flex">';
+const d=await get('/api/dashboard');
+const p=d.performance||{};
+document.getElementById('stat-trades').textContent=p.total_trades||0;
+const wr=document.getElementById('stat-winrate');
+const wrv=p.win_rate||0;
+wr.textContent=wrv+'%';wr.style.color=wrv>=55?'var(--green)':wrv>=45?'var(--orange)':'var(--red)';
+const pnl=document.getElementById('stat-pnl');
+const pnlv=p.total_pnl||0;
+pnl.textContent='\u20b9'+num(pnlv);pnl.style.color=pnlv>=0?'var(--green)':'var(--red)';
+const cl=document.getElementById('stat-consec');
+const clv=p.consecutive_losses||0;
+cl.textContent=clv;cl.style.color=clv>=3?'var(--red)':'var(--orange)';
+document.getElementById('hero-subtitle').textContent=(p.total_trades||0)+' trades \u00b7 v'+(p.strategy_version||1)+(d.balance?' \u00b7 Balance: \u20b9'+num(d.balance):'');
+const hs=document.getElementById('hero-status');
+if(d.balance){hs.innerHTML='<span class="dot green"></span> Live';}
+else if(p.total_trades>0){hs.innerHTML='<span class="dot yellow"></span> Paper Trading';}
+else{hs.innerHTML='<span class="dot yellow"></span> Waiting...';}
+const balEl=document.getElementById('balance-display');
+if(d.balance){balEl.innerHTML='<div style="font-size:32px;font-weight:700;color:var(--accent);margin:4px 0">\u20b9'+num(d.balance)+'</div><div style="font-size:12px;color:var(--muted)">from '+esc(d.balance_source)+'</div>';}
+else{balEl.innerHTML='<div style="color:var(--muted);padding:8px 0">No balance data (API keys may be missing)</div>';}
 const coins=d.coins||{};
-let hasCoins=false;
-for(const[coin,status]of Object.entries(coins)){
-hasCoins=true;
-let cls='badge-fail',label='FAIL';
-if(status.trading){cls='badge-live';label='LIVE'}
-else if(status.passed){cls='badge-pass';label='PASS'}
-coinHTML+='<div><span class="badge '+cls+'">'+escapeHTML(coin)+' '+label+'</span>'+(status.failed?' <span style="font-size:11px;color:#f85149">'+escapeHTML(status.failed)+'</span>':'')+'</div>';
+let ch='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+let has=false;
+for(const[c,s]of Object.entries(coins)){
+has=true;
+let cls='fail',label='FAIL';
+if(s.trading){cls='live';label='LIVE';}
+else if(s.passed){cls='pass';label='PASS';}
+ch+='<span class="coin-pill '+cls+'"><span class="dot"></span>'+c+' '+label+'</span>';
 }
-if(!hasCoins)coinHTML+='<div style="color:#484f58">No coin data</div>';
-coinHTML+='</div>';
-coinDiv.innerHTML=coinHTML;
-}catch(e){document.getElementById('balance').innerHTML='<div class="error">Error: '+e.message+'</div>'}
+if(!has)ch+='<span style="color:var(--muted)">No coins configured</span>';
+ch+='</div>';
+document.getElementById('coins-display').innerHTML=ch;
+const pos=d.positions||{};
+const pk=Object.keys(pos);
+const pm=document.getElementById('positions-mini');
+if(pk.length>0){
+let ph='<table><thead><tr><th>Coin</th><th>Entry</th><th>Qty</th><th>SL</th><th>TP</th><th>Duration</th><th>PnL</th></tr></thead><tbody>';
+for(const[coin,po]of Object.entries(pos)){
+const dur=po.entry_time?Math.floor((Date.now()/1000-po.entry_time)/3600)+'h':'';
+const pnlVal=po.current_price?(po.current_price-po.entry_price)*po.quantity:0;
+ph+='<tr><td><strong>'+coin+'</strong></td><td>\u20b9'+num(po.entry_price)+'</td><td>'+po.quantity+'</td><td style="color:var(--red)">'+po.sl_pct+'%</td><td style="color:var(--green)">'+po.tp_pct+'%</td><td>'+dur+'</td><td style="color:'+(pnlVal>=0?'var(--green)':'var(--red)')+'">\u20b9'+num(pnlVal)+'</td></tr>';
+}
+ph+='</tbody></table>';
+pm.innerHTML=ph;
+}else{pm.innerHTML='<div class="empty">No open positions</div>';}
+}catch(e){console.error(e)}
 }
 
 async function loadStrategy(){
 try{
-const s=await fetch('/api/strategy').then(r=>r.json());
-const div=document.getElementById('strategy-code');
-if(s.code){
-let html='<div class="stat-row"><span class="stat-label">Approved Coins</span><span class="stat-value blue">'+(s.coins||[]).join(', ')+'</span></div>';
-html+='<div class="stat-row"><span class="stat-label">Strategy Length</span><span class="stat-value">'+(s.code.length)+' chars</span></div>';
-html+='<div style="margin-top:10px"><pre>'+escapeHTML(s.code)+'</pre></div>';
-div.innerHTML=html;
-}else{div.innerHTML='<div style="color:#484f58">No strategy saved yet. Run the agent to generate one.</div>'}
-}catch(e){document.getElementById('strategy-code').innerHTML='<div class="error">Error: '+e.message+'</div>'}
-}
-
-async function loadBacktests(){
-try{
-const b=await fetch('/api/metric_failures').then(r=>r.json());
-const div=document.getElementById('backtest-history');
-if(b&&Object.keys(b).length>0){
-let html='<table><thead><tr><th>Coin</th><th>Attempts</th><th>Failures by Metric</th></tr></thead><tbody>';
-for(const[coin,data]of Object.entries(b)){
-let fails=Object.entries(data.failures||{}).map(([m,c])=>'<span class="red">'+escapeHTML(m)+': '+c+'x</span>').join(' | ');
-html+='<tr><td><strong>'+escapeHTML(coin)+'</strong></td><td>'+data.total_attempts+'</td><td>'+fails+'</td></tr>';
-}
-html+='</tbody></table>';
-div.innerHTML=html;
-}else{div.innerHTML='<div style="color:#484f58">No backtest failures recorded yet.</div>'}
-}catch(e){document.getElementById('backtest-history').innerHTML='<div class="error">Error: '+e.message+'</div>'}
-}
-
-async function loadPositions(){
-try{
-const p=await fetch('/api/positions').then(r=>r.json());
-const div=document.getElementById('open-positions');
-const keys=Object.keys(p);
-if(keys.length>0){
-let html='<table><thead><tr><th>Coin</th><th>Entry</th><th>Qty</th><th>SL</th><th>TP</th><th>Duration</th></tr></thead><tbody>';
-for(const[coin,pos]of Object.entries(p)){
-let dur='';
-if(pos.entry_time){dur=Math.floor((Date.now()/1000-pos.entry_time)/3600)+'h'}
-html+='<tr><td><strong>'+escapeHTML(coin)+'</strong></td><td>\u20b9'+fmtNum(pos.entry_price)+'</td><td>'+pos.quantity+'</td><td class="red">'+pos.sl_pct+'%</td><td class="green">'+pos.tp_pct+'%</td><td>'+dur+'</td></tr>';
-}
-html+='</tbody></table>';
-div.innerHTML=html;
-}else{div.innerHTML='<div style="color:#484f58">No open positions.</div>'}
-}catch(e){document.getElementById('open-positions').innerHTML='<div class="error">Error: '+e.message+'</div>'}
+const s=await get('/api/strategy');
+const info=document.getElementById('strategy-info');
+if(s.coins&&s.coins.length){
+info.innerHTML='<div class="stat-row"><span class="stat-label">Approved Coins</span><span class="stat-value" style="color:var(--accent)">'+s.coins.join(', ')+'</span></div>'+
+'<div class="stat-row"><span class="stat-label">Code Size</span><span class="stat-value">'+(s.code?s.code.length:0)+' chars</span></div>'+
+'<div class="stat-row"><span class="stat-label">SL / TP</span><span class="stat-value">'+(s.sl_pct||'?')+'% / '+(s.tp_pct||'?')+'%</span></div>';
+}else{info.innerHTML='<div class="empty">No strategy saved yet. Run the agent.</div>'}
+const codeEl=document.getElementById('strategy-code');
+if(s.code)codeEl.textContent=s.code;
+else codeEl.textContent='// No strategy selected';
+}catch(e){console.error(e)}
 }
 
 async function loadTrades(){
 try{
-const t=await fetch('/api/trades').then(r=>r.json());
-const div=document.getElementById('trade-history');
+const t=await get('/api/trades');
+document.getElementById('trade-count').textContent=t.length+' trades';
+const div=document.getElementById('trades-table');
 if(t.length>0){
-let html='<table><thead><tr><th>Time</th><th>Coin</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Result</th></tr></thead><tbody>';
-const recent=t.slice(-50).reverse();
+const recent=t.slice(-100).reverse();
+let h='<table><thead><tr><th>Time</th><th>Coin</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Result</th></tr></thead><tbody>';
 for(const tr of recent){
-html+='<tr><td style="color:#8b949e">'+escapeHTML(tr.time||'')+'</td><td><strong>'+escapeHTML(tr.coin)+'</strong></td>'+
-'<td>\u20b9'+fmtNum(tr.entry)+'</td><td>\u20b9'+fmtNum(tr.exit)+'</td>'+
-'<td class="'+(tr.won?'green':'red')+'">\u20b9'+fmtNum(tr.pnl)+'</td>'+
-'<td><span class="badge '+(tr.won?'badge-pass':'badge-fail')+'">'+(tr.won?'WIN':'LOSS')+'</span></td></tr>';
+h+='<tr><td style="color:var(--muted);font-size:12px">'+esc(tr.time||'')+'</td><td><strong>'+esc(tr.coin)+'</strong></td>'+
+'<td>\u20b9'+num(tr.entry)+'</td><td>\u20b9'+num(tr.exit)+'</td>'+
+'<td style="color:'+(tr.won?'var(--green)':'var(--red)')+';font-weight:600">'+(tr.won?'+':'')+'\u20b9'+num(tr.pnl)+'</td>'+
+'<td><span class="badge '+(tr.won?'badge-green':'badge-red')+'">'+(tr.won?'WIN':'LOSS')+'</span></td></tr>';
 }
-html+='</tbody></table>';
-div.innerHTML=html;
-}else{div.innerHTML='<div style="color:#484f58">No trades yet.</div>'}
-}catch(e){document.getElementById('trade-history').innerHTML='<div class="error">Error: '+e.message+'</div>'}
+h+='</tbody></table>';
+div.innerHTML=h;
+}else{div.innerHTML='<div class="empty">No trades yet. The bot will trade once it finds a strategy.</div>'}
+}catch(e){console.error(e)}
+}
+
+async function loadPositions(){
+try{
+const p=await get('/api/positions');
+const div=document.getElementById('positions-full');
+const keys=Object.keys(p);
+if(keys.length>0){
+let h='<table><thead><tr><th>Coin</th><th>Entry Price</th><th>Quantity</th><th>SL %</th><th>TP %</th><th>Entry Time</th><th>Duration</th></tr></thead><tbody>';
+for(const[coin,po]of Object.entries(p)){
+const dur=po.entry_time?Math.floor((Date.now()/1000-po.entry_time)/3600)+'h':'';
+const et=po.entry_time?new Date(po.entry_time*1000).toLocaleString():'-';
+h+='<tr><td><strong>'+coin+'</strong></td><td>\u20b9'+num(po.entry_price)+'</td><td>'+po.quantity+'</td><td style="color:var(--red)">'+po.sl_pct+'%</td><td style="color:var(--green)">'+po.tp_pct+'%</td><td style="font-size:12px;color:var(--muted)">'+et+'</td><td>'+dur+'</td></tr>';
+}
+h+='</tbody></table>';
+div.innerHTML=h;
+}else{div.innerHTML='<div class="empty">No open positions.</div>'}
+}catch(e){console.error(e)}
+}
+
+async function loadBacktests(){
+try{
+const b=await get('/api/metric_failures');
+const div=document.getElementById('backtests-content');
+if(b&&Object.keys(b).length>0){
+let h='<table><thead><tr><th>Coin</th><th>Attempts</th><th>Sharpe</th><th>Win Rate</th><th>Drawdown</th><th>Trades</th></tr></thead><tbody>';
+for(const[coin,data]of Object.entries(b)){
+const f=data.failures||{};
+h+='<tr><td><strong>'+coin+'</strong></td><td>'+data.total_attempts+'</td>'+
+'<td style="color:'+(f.sharpe?'var(--red)':'var(--muted)')+'">'+(f.sharpe||0)+'x</td>'+
+'<td style="color:'+(f.win_rate?'var(--red)':'var(--muted)')+'">'+(f.win_rate||0)+'x</td>'+
+'<td style="color:'+(f.max_drawdown?'var(--red)':'var(--muted)')+'">'+(f.max_drawdown||0)+'x</td>'+
+'<td style="color:'+(f.trades_count?'var(--red)':'var(--muted)')+'">'+(f.trades_count||0)+'x</td></tr>';
+}
+h+='</tbody></table>';
+div.innerHTML=h;
+}else{div.innerHTML='<div class="empty">No backtest data yet.</div>'}
+}catch(e){console.error(e)}
 }
 
 async function loadActivity(){
 try{
-const a=await fetch('/api/logs').then(r=>r.json());
-const div=document.getElementById('activity-log');
+const a=await get('/api/logs');
 const lines=a.lines||[];
+document.getElementById('log-count').textContent=lines.length+' lines';
+const box=document.getElementById('activity-box');
 if(lines.length>0){
-let html='<div class="log-box">';
-for(const line of lines.slice(-80)){
-const clean=escapeHTML(line);
-let color='';
-if(clean.includes('FAIL')||clean.includes('fail')||clean.includes('Error')||clean.includes('error'))color='color:#f85149';
-else if(clean.includes('PASS')||clean.includes('WIN')||clean.includes('pass'))color='color:#3fb950';
-else if(clean.includes('LIVE')||clean.includes('BUY')||clean.includes('SELL')||clean.includes('SL')||clean.includes('TP'))color='color:#d29922';
-html+='<div'+(color?' style="'+color+'"':'')+'>'+clean+'</div>';
+let h='<div class="log-box">';
+for(const line of lines.slice(-100)){
+const clean=esc(line);
+let c='';
+if(/FAIL|fail|Error|error|loss|LOSS/.test(clean))c='color:var(--red)';
+else if(/PASS|pass|WIN|WIN/.test(clean))c='color:var(--green)';
+else if(/LIVE|BUY|SELL|SL|TP|trade|TRADE/.test(clean))c='color:var(--orange)';
+else if(/search|SEARCH|strategy|STRATEGY/.test(clean))c='color:var(--cyan)';
+h+='<div class="log-line" style="'+c+'">'+clean+'</div>';
 }
-html+='</div>';
-div.innerHTML=html;
-const box=div.querySelector('.log-box');
-if(box)box.scrollTop=box.scrollHeight;
-}else{div.innerHTML='<div style="color:#484f58">No activity yet.</div>'}
-}catch(e){document.getElementById('activity-log').innerHTML='<div class="error">Error: '+e.message+'</div>'}
+h+='</div>';
+box.innerHTML=h;
+const lb=box.querySelector('.log-box');
+if(lb)lb.scrollTop=lb.scrollHeight;
+}else{box.innerHTML='<div class="empty">No activity yet.</div>'}
+}catch(e){console.error(e)}
 }
 
-function refreshAll(){loadAll();loadStrategy();loadBacktests();loadPositions();loadTrades();loadActivity()}
-refreshAll();
-setInterval(refreshAll,10000);
+updateTime();
+loadOverview();loadStrategy();loadTrades();loadPositions();loadBacktests();loadActivity();
+setInterval(()=>{updateTime();loadOverview();loadStrategy();loadTrades();loadPositions();loadBacktests();loadActivity()},10000);
 </script>
 </body>
 </html>"""
@@ -259,7 +366,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, data)
             elif self.path == "/api/strategy":
                 data = load_json("strategy_store.json")
-                self._json(200, {"code": data.get("strategy_code") if data else None, "coins": data.get("good_coins") if data else []})
+                code = data.get("strategy_code") if data else None
+                sl_pct, tp_pct = None, None
+                if code:
+                    import re
+                    m = re.search(r"SL_PCT\s*=\s*([\d.]+)", code)
+                    if m: sl_pct = float(m.group(1))
+                    m = re.search(r"TP_PCT\s*=\s*([\d.]+)", code)
+                    if m: tp_pct = float(m.group(1))
+                self._json(200, {
+                    "code": code,
+                    "coins": data.get("good_coins") if data else [],
+                    "sl_pct": sl_pct,
+                    "tp_pct": tp_pct
+                } if data else {"code": None, "coins": []})
             elif self.path == "/api/metric_failures":
                 data = load_json("metric_failures.json")
                 self._json(200, data or {})
@@ -324,7 +444,8 @@ class Handler(BaseHTTPRequestHandler):
                 "consecutive_losses": log.get("consecutive_losses", 0),
                 "strategy_version": log.get("strategy_version", 1)
             },
-            "coins": coins
+            "coins": coins,
+            "positions": pos
         }
 
     def log_message(self, *args): pass
