@@ -49,7 +49,12 @@ def get_ohlcv(symbol, pair):
         print("[DATA] Failed " + pair + ": " + str(e), flush=True)
         return None
 
+_data_cache = None
+
 def get_top5_ohlcv():
+    global _data_cache
+    if _data_cache is not None:
+        return _data_cache
     all_data = {}
     for symbol, pair in COINS.items():
         print("[DATA] Fetching " + symbol + " (" + pair + ")...", flush=True)
@@ -58,6 +63,7 @@ def get_top5_ohlcv():
             all_data[symbol] = df
         time.sleep(1)
     print("[DATA] Done — " + str(len(all_data)) + "/5 coins fetched", flush=True)
+    _data_cache = all_data
     return all_data
 
 def get_market_summary(all_data):

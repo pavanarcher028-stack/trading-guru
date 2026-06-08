@@ -227,7 +227,7 @@ def call_gemini(prompt):
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + api_key
     body = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        r = requests.post(url, json=body, timeout=60)
+        r = requests.post(url, json=body, timeout=10)
         if r.status_code == 200:
             full = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             code = parse_code(full)
@@ -272,7 +272,7 @@ def call_nvidia_for_improvement(prompt):
                     "max_tokens": 2000,
                     "temperature": 0.3
                 },
-                timeout=120
+                timeout=10
             )
             if r.status_code == 200:
                 content = r.json()["choices"][0]["message"]["content"]
