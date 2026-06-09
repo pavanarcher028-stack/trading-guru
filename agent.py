@@ -602,12 +602,14 @@ def trading_loop(all_data):
                 strat = active_strategy
                 coins = list(active_good_coins)
             if strat and coins:
-                print("[TRADER] Trading: " + str(coins), flush=True)
-                execute_strategy(strat, all_data, coins)
-                trade_count += 1
+                print("[TRADER] Checking: " + str(coins), flush=True)
+                result = execute_strategy(strat, all_data, coins)
+                trades_placed = sum(1 for v in result.values() if v.get("action") == "buy")
+                if trades_placed > 0:
+                    trade_count += 1
                 get_performance_summary()
                 print("[TRADER] Trade " + str(trade_count) + " done. Revalidate at " + str(revalidate_every), flush=True)
-                if trade_count >= revalidate_every:
+                if trade_count >= revalidate_every and trade_count > 0:
                     revalidate(all_data)
                 time.sleep(3600)
             else:
@@ -645,11 +647,6 @@ def run_agent():
                     active_strategy = saved_code
                     active_good_coins = saved_coins
                 print("[AGENT] Resuming saved strategy for: " + str(saved_coins), flush=True)
-                if active_strategy and active_good_coins:
-                    proof = run_backtest(active_strategy, {c: all_data[c] for c in active_good_coins if c in all_data})
-                    for c, s in proof.items():
-                        status = "PASS" if s["passed"] else "FAIL"
-                        print("[PROOF] " + c + " [" + status + "] Sharpe: " + str(s["sharpe"]) + " Win: " + str(s["win_rate"]) + "% DD: " + str(s["max_drawdown"]) + "% Trades: " + str(s["trades"]), flush=True)
                 remaining = [c for c in ["BTC", "ETH", "BNB", "SOL", "XRP"] if c not in saved_coins]
                 if remaining:
                     search_thread = threading.Thread(
