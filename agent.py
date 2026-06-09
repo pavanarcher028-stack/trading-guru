@@ -616,7 +616,7 @@ def trading_loop(_=None):
                 print("[TRADER] Trade " + str(trade_count) + " done. Revalidate at " + str(revalidate_every), flush=True)
                 if trade_count >= revalidate_every and trade_count > 0:
                     revalidate(all_data)
-                time.sleep(3600)
+                time.sleep(600)
             else:
                 print("[TRADER] Waiting for approved coins...", flush=True)
                 time.sleep(300)
@@ -679,12 +679,12 @@ def run_agent():
 
     while True:
         try:
-            time.sleep(3600)
+            time.sleep(600)
         except KeyboardInterrupt:
             break
         except Exception as e:
             print("[AGENT] Maintenance error: " + str(e), flush=True)
-            time.sleep(3600)
+            time.sleep(600)
 
 
 if __name__ == "__main__":
