@@ -594,7 +594,7 @@ def revalidate(all_data):
     print("[REVALIDATE] Next check in " + str(revalidate_every) + " trades", flush=True)
 
 
-def trading_loop(all_data):
+def trading_loop(_=None):
     global trade_count
     while True:
         try:
@@ -602,6 +602,11 @@ def trading_loop(all_data):
                 strat = active_strategy
                 coins = list(active_good_coins)
             if strat and coins:
+                all_data = get_top5_ohlcv()
+                if not all_data:
+                    print("[TRADER] No data, retrying in 5 mins", flush=True)
+                    time.sleep(300)
+                    continue
                 print("[TRADER] Checking: " + str(coins), flush=True)
                 result = execute_strategy(strat, all_data, coins)
                 trades_placed = sum(1 for v in result.values() if v.get("action") == "buy")
@@ -630,59 +635,56 @@ def run_agent():
         return
     print("[AGENT] All keys found", flush=True)
     print("[AGENT] Strategy source: 20 built-in fallback strategies (no AI)", flush=True)
-    trading_thread_started = False
-    loop_count = 0
+
+    all_data = get_top5_ohlcv()
+    if not all_data:
+        print("[AGENT] No data, exiting", flush=True)
+        return
+    saved_code, saved_coins = load_strategy()
+    if saved_code and saved_coins:
+        with lock:
+            active_strategy = saved_code
+            active_good_coins = saved_coins
+        print("[AGENT] Resuming saved strategy for: " + str(saved_coins), flush=True)
+        remaining = [c for c in ["BTC", "ETH", "BNB", "SOL", "XRP"] if c not in saved_coins]
+        if remaining:
+            search_thread = threading.Thread(
+                target=search_strategy,
+                args=(all_data, remaining),
+                daemon=True
+            )
+            search_thread.start()
+        else:
+            search_thread = None
+    else:
+        bump_strategy_version()
+        active_good_coins = []
+        active_strategy = None
+        search_thread = threading.Thread(
+            target=search_strategy,
+            args=(all_data, ["BTC", "ETH", "BNB", "SOL", "XRP"]),
+            daemon=True
+        )
+        search_thread.start()
+
+    threading.Thread(
+        target=trading_loop,
+        daemon=True
+    ).start()
+
+    if search_thread:
+        print("[AGENT] Waiting for strategy search to complete...", flush=True)
+        search_thread.join()
+        print("[AGENT] Strategy search complete. Entering maintenance sleep.", flush=True)
+
     while True:
         try:
-            loop_count += 1
-            print("[AGENT] Loop " + str(loop_count), flush=True)
-            all_data = get_top5_ohlcv()
-            if not all_data:
-                print("[AGENT] No data, waiting 10 mins", flush=True)
-                time.sleep(600)
-                continue
-            saved_code, saved_coins = load_strategy()
-            if saved_code and saved_coins:
-                with lock:
-                    active_strategy = saved_code
-                    active_good_coins = saved_coins
-                print("[AGENT] Resuming saved strategy for: " + str(saved_coins), flush=True)
-                remaining = [c for c in ["BTC", "ETH", "BNB", "SOL", "XRP"] if c not in saved_coins]
-                if remaining:
-                    search_thread = threading.Thread(
-                        target=search_strategy,
-                        args=(all_data, remaining),
-                        daemon=True
-                    )
-                    search_thread.start()
-                else:
-                    search_thread = None
-            else:
-                bump_strategy_version()
-                active_good_coins = []
-                active_strategy = None
-                search_thread = threading.Thread(
-                    target=search_strategy,
-                    args=(all_data, ["BTC", "ETH", "BNB", "SOL", "XRP"]),
-                    daemon=True
-                )
-                search_thread.start()
-            if not trading_thread_started:
-                threading.Thread(
-                    target=trading_loop,
-                    args=(all_data,),
-                    daemon=True
-                ).start()
-                trading_thread_started = True
-            if search_thread:
-                search_thread.join()
-            print("[AGENT] Search done. Sleeping 5 mins", flush=True)
-            time.sleep(300)
+            time.sleep(3600)
         except KeyboardInterrupt:
             break
         except Exception as e:
-            print("[AGENT] Error: " + str(e), flush=True)
-            time.sleep(900)
+            print("[AGENT] Maintenance error: " + str(e), flush=True)
+            time.sleep(3600)
 
 
 if __name__ == "__main__":
