@@ -634,7 +634,9 @@ def run_agent():
             time.sleep(3600)
         return
     print("[AGENT] All keys found", flush=True)
+    mode = os.environ.get("TRADE_MODE", "spot")
     print("[AGENT] Strategy source: 20 built-in fallback strategies (no AI)", flush=True)
+    print("[AGENT] Trade mode: " + mode + " (set TRADE_MODE=futures for long+short with leverage)", flush=True)
 
     all_data = get_top5_ohlcv()
     if not all_data:
