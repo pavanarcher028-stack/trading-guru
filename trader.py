@@ -217,16 +217,18 @@ def execute_strategy(strategy_code, all_data, good_coins):
         trade_amount = MAX_TRADE
     print("[TRADER] Trade amount: Rs." + str(round(trade_amount, 2)), flush=True)
     results = {}
+    signal_strs = []
     for coin in good_coins:
         try:
             df = all_data[coin]
             signals = get_signals(df)
             last_signal = int(signals.iloc[-1])
+            current_price = float(df["close"].iloc[-1])
+            signal_strs.append(coin + "=" + str(last_signal) + " @Rs." + str(round(current_price, 2)))
             coin_symbol = COIN_MAP.get(coin)
             if not coin_symbol:
                 print("[TRADER] No pair for " + coin, flush=True)
                 continue
-            current_price = float(df["close"].iloc[-1])
             positions = load_positions()
             if last_signal == 1 and coin not in positions:
                 quantity = round(trade_amount / current_price, 6)
@@ -246,12 +248,11 @@ def execute_strategy(strategy_code, all_data, good_coins):
                     print("[TRADER] Position opened for " + coin + " @ Rs." + str(round(current_price, 2)) + " SL:" + str(sl_pct) + "% TP:" + str(tp_pct) + "%", flush=True)
                 results[coin] = {"action": "buy", "order": order, "price": current_price, "quantity": quantity}
             elif coin in positions:
-                print("[TRADER] HOLD " + coin + " (position open, waiting for SL/TP)", flush=True)
                 results[coin] = {"action": "hold", "order": None}
             else:
-                print("[TRADER] HOLD " + coin, flush=True)
                 results[coin] = {"action": "hold", "order": None}
             time.sleep(1)
         except Exception as e:
             print("[TRADER] Error for " + coin + ": " + str(e), flush=True)
+    print("[TRADER] Signals: " + ", ".join(signal_strs), flush=True)
     return results
