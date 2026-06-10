@@ -157,6 +157,14 @@ def parse_sl_tp(strategy_code):
     print("[TRADER] SL=" + str(sl_pct) + "% TP=" + str(tp_pct) + "%", flush=True)
     return sl_pct, tp_pct
 
+INTERVALS = ["5m", "15m", "30m", "1h"]
+
+def _pick_price(all_data, coin):
+    for tf in ["1h", "30m", "15m", "5m"]:
+        if coin in all_data and tf in all_data[coin]:
+            return float(all_data[coin][tf]["close"].iloc[-1])
+    return 0
+
 def check_and_close_positions(all_data):
     positions = load_positions()
     if not positions:
@@ -164,9 +172,9 @@ def check_and_close_positions(all_data):
     to_remove = []
     for coin, pos in positions.items():
         try:
-            if coin not in all_data:
+            current_price = _pick_price(all_data, coin)
+            if current_price == 0:
                 continue
-            current_price = float(all_data[coin]["close"].iloc[-1])
             entry = pos["entry_price"]
             sl_pct = pos["sl_pct"]
             tp_pct = pos["tp_pct"]
@@ -187,7 +195,7 @@ def check_and_close_positions(all_data):
                 from monitor import record_trade
                 record_trade(coin, "sell", entry, current_price, pos["quantity"])
             else:
-                print("[TRADER] " + coin + " PnL: " + str(round(pct_change, 2)) + "% (SL:" + str(sl_pct) + "% TP:" + str(tp_pct) + "%)", flush=True)
+                pass
         except Exception as e:
             print("[TRADER] Position check error " + coin + ": " + str(e), flush=True)
     if to_remove:
@@ -215,22 +223,29 @@ def execute_strategy(strategy_code, all_data, good_coins):
         trade_amount = MIN_TRADE
     if trade_amount > MAX_TRADE:
         trade_amount = MAX_TRADE
-    print("[TRADER] Trade amount: Rs." + str(round(trade_amount, 2)), flush=True)
     results = {}
-    signal_strs = []
     for coin in good_coins:
         try:
-            df = all_data[coin]
-            signals = get_signals(df)
-            last_signal = int(signals.iloc[-1])
-            current_price = float(df["close"].iloc[-1])
-            signal_strs.append(coin + "=" + str(last_signal) + " @Rs." + str(round(current_price, 2)))
-            coin_symbol = COIN_MAP.get(coin)
-            if not coin_symbol:
-                print("[TRADER] No pair for " + coin, flush=True)
+            coin_data = all_data.get(coin, {})
+            if not coin_data:
                 continue
+            available_tfs = [tf for tf in INTERVALS if tf in coin_data]
+            if not available_tfs:
+                continue
+            best_signal = 0
+            signal_detail = []
+            for tf in available_tfs:
+                df = coin_data[tf]
+                sig = int(get_signals(df.copy()).iloc[-1])
+                price = float(df["close"].iloc[-1])
+                signal_detail.append(tf + "=" + str(sig) + "@" + str(round(price, 2)))
+                if sig != 0:
+                    best_signal = sig
+            current_price = _pick_price(all_data, coin)
             positions = load_positions()
-            if last_signal == 1 and coin not in positions:
+            coin_symbol = COIN_MAP.get(coin)
+            print("[TRADER] " + coin + " sigs=[" + ", ".join(signal_detail) + "] pos=" + str(coin in positions), flush=True)
+            if best_signal == 1 and coin not in positions:
                 quantity = round(trade_amount / current_price, 6)
                 print("[TRADER] BUY " + coin + " qty=" + str(quantity) + " at Rs." + str(round(current_price, 2)), flush=True)
                 order = place_order("buy", coin_symbol, quantity)
@@ -247,12 +262,24 @@ def execute_strategy(strategy_code, all_data, good_coins):
                         save_positions(pos)
                     print("[TRADER] Position opened for " + coin + " @ Rs." + str(round(current_price, 2)) + " SL:" + str(sl_pct) + "% TP:" + str(tp_pct) + "%", flush=True)
                 results[coin] = {"action": "buy", "order": order, "price": current_price, "quantity": quantity}
-            elif coin in positions:
-                results[coin] = {"action": "hold", "order": None}
+            elif best_signal == -1 and coin in positions:
+                print("[TRADER] SELL " + coin + " (signal=-1 from timeframe)", flush=True)
+                order = place_order("sell", coin_symbol, positions[coin]["quantity"])
+                if order and "id" in order:
+                    from monitor import record_trade
+                    record_trade(coin, "sell", positions[coin]["entry_price"], current_price, positions[coin]["quantity"])
+                    with positions_lock:
+                        pos = load_positions()
+                        pos.pop(coin, None)
+                        save_positions(pos)
+                    print("[TRADER] Position closed for " + coin + " @ Rs." + str(round(current_price, 2)), flush=True)
+                results[coin] = {"action": "sell", "order": order}
+            elif best_signal == -1 and coin not in positions:
+                print("[TRADER] SHORT signal for " + coin + " but no short support on spot", flush=True)
+                results[coin] = {"action": "short_signal_no_pos"}
             else:
                 results[coin] = {"action": "hold", "order": None}
             time.sleep(1)
         except Exception as e:
             print("[TRADER] Error for " + coin + ": " + str(e), flush=True)
-    print("[TRADER] Signals: " + ", ".join(signal_strs), flush=True)
     return results

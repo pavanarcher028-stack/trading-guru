@@ -10,74 +10,79 @@ COINS = {
     "XRP": "B-XRP_USDT"
 }
 
-def get_ohlcv(symbol, pair):
+INTERVALS = ["5m", "15m", "30m", "1h"]
+
+def get_ohlcv(pair, interval):
     try:
         url = "https://public.coindcx.com/market_data/candles"
-        params = {
-            "pair": pair,
-            "interval": "1h",
-            "limit": 1000
-        }
+        limit = 200 if interval in ("5m", "15m") else 500 if interval == "30m" else 1000
+        params = {"pair": pair, "interval": interval, "limit": limit}
         response = requests.get(url, params=params, timeout=15)
-        print("[DATA] " + pair + " status: " + str(response.status_code), flush=True)
-
         data = response.json()
-
         if not data or len(data) == 0:
-            print("[DATA] Empty response for " + pair, flush=True)
+            print("[DATA] Empty response for " + pair + " " + interval, flush=True)
             return None
-
         if isinstance(data, dict):
-            print("[DATA] Error response for " + pair + ": " + str(data), flush=True)
+            print("[DATA] Error for " + pair + " " + interval + ": " + str(data), flush=True)
             return None
-
         df = pd.DataFrame(data)
-        print("[DATA] Columns: " + str(list(df.columns)), flush=True)
-
         if "time" in df.columns:
             df = df.rename(columns={"time": "timestamp"})
-
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
         df = df.sort_values("timestamp")
         df.set_index("timestamp", inplace=True)
         df = df[["open", "high", "low", "close", "volume"]].astype(float)
-
-        print("[DATA] OK " + pair + " — " + str(len(df)) + " candles — last close: " + str(df["close"].iloc[-1]), flush=True)
+        print("[DATA] OK " + pair + " " + interval + " — " + str(len(df)) + " candles", flush=True)
         return df
-
     except Exception as e:
-        print("[DATA] Failed " + pair + ": " + str(e), flush=True)
+        print("[DATA] Failed " + pair + " " + interval + ": " + str(e), flush=True)
         return None
 
-_data_cache = None
+_data_cache = {}
 
-def get_top5_ohlcv():
+def get_top5_multi_tf():
     global _data_cache
-    if _data_cache is not None:
-        return _data_cache
     all_data = {}
     for symbol, pair in COINS.items():
-        print("[DATA] Fetching " + symbol + " (" + pair + ")...", flush=True)
-        df = get_ohlcv(symbol, pair)
-        if df is not None:
-            all_data[symbol] = df
-        time.sleep(1)
-    print("[DATA] Done — " + str(len(all_data)) + "/5 coins fetched", flush=True)
-    _data_cache = all_data
+        all_data[symbol] = {}
+        for interval in INTERVALS:
+            cache_key = symbol + "_" + interval
+            if cache_key in _data_cache:
+                all_data[symbol][interval] = _data_cache[cache_key]
+                continue
+            df = get_ohlcv(pair, interval)
+            if df is not None:
+                _data_cache[cache_key] = df
+                all_data[symbol][interval] = df
+            time.sleep(0.5)
+    print("[DATA] Multi-TF done — " + str(len(all_data)) + "/5 coins", flush=True)
     return all_data
+
+def get_top5_ohlcv():
+    data = get_top5_multi_tf()
+    flat = {}
+    for coin, tfs in data.items():
+        if "1h" in tfs:
+            flat[coin] = tfs["1h"]
+    return flat
 
 def get_market_summary(all_data):
     summary = []
-    for coin, df in all_data.items():
+    for coin in all_data:
+        data = all_data[coin]
+        if isinstance(data, dict):
+            df = data.get("1h") or next(iter(data.values()))
+        else:
+            df = data
+        if df is None or len(df) < 2:
+            continue
         last_close = round(df["close"].iloc[-1], 4)
-        change = round(
-            ((df["close"].iloc[-1] - df["close"].iloc[-2])
-            / df["close"].iloc[-2]) * 100, 2
-        )
+        change = round(((df["close"].iloc[-1] - df["close"].iloc[-2]) / df["close"].iloc[-2]) * 100, 2)
         summary.append(coin + ": price=" + str(last_close) + ", change=" + str(change) + "%")
     result = "\n".join(summary)
     print("[DATA] Summary:\n" + result, flush=True)
     return result
+
 def get_usd_to_inr():
     try:
         url = "https://api.exchangerate-api.com/v4/latest/USD"
@@ -86,6 +91,6 @@ def get_usd_to_inr():
         rate = float(data["rates"]["INR"])
         print("[DATA] Live USD/INR rate: " + str(rate), flush=True)
         return rate
-    except Exception as e:
-        print("[DATA] Rate fetch failed, using 84.0: " + str(e), flush=True)
+    except:
+        print("[DATA] Rate fetch failed, using 84.0", flush=True)
         return 84.0

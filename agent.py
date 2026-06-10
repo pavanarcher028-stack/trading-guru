@@ -6,7 +6,7 @@ import random
 import log_capture; log_capture.install()
 from api import start_api
 from strategy_store import save_strategy, load_strategy
-from data import get_top5_ohlcv, get_market_summary
+from data import get_top5_ohlcv, get_top5_multi_tf, get_market_summary
 from backtest import run_backtest, is_strategy_good
 from trader import execute_strategy
 from monitor import bump_strategy_version, get_performance_summary
@@ -602,7 +602,7 @@ def trading_loop(_=None):
                 strat = active_strategy
                 coins = list(active_good_coins)
             if strat and coins:
-                all_data = get_top5_ohlcv()
+                all_data = get_top5_multi_tf()
                 if not all_data:
                     print("[TRADER] No data, retrying in 5 mins", flush=True)
                     time.sleep(300)
