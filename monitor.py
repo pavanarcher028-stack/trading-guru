@@ -24,7 +24,7 @@ def save_log(log):
 def record_trade(coin, action, entry_price, exit_price, amount):
     log = load_log()
 
-    if action != 'sell' or entry_price is None or exit_price is None:
+    if entry_price is None or exit_price is None:
         return
 
     pnl = (exit_price - entry_price) * amount

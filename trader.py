@@ -98,9 +98,6 @@ def get_balance():
                     _balance_cache["time"] = now
                 return inr
         print("[TRADER] No INR balance found: " + json.dumps(balances)[:200], flush=True)
-        with _balance_cache_lock:
-            _balance_cache["value"] = 0
-            _balance_cache["time"] = now
         return 0
     except Exception as e:
         print("[TRADER] Balance fetch failed: " + str(e), flush=True)
@@ -111,25 +108,23 @@ def get_balance():
 
 def get_futures_balance():
     try:
-        timestamp = int(round(time.time() * 1000))
+        timestamp = int(round(time.time()))
         json_body, headers = sign_request({"timestamp": timestamp})
-        response = requests.post(
-            BASE_URL + "/exchange/v1/users/balances",
+        response = requests.get(
+            BASE_URL + "/exchange/v1/derivatives/futures/wallets",
             data=json_body, headers=headers, timeout=10
         )
-        resp = response.json()
-        if isinstance(resp, dict):
-            balances = resp.get("data", resp.get("balances", []))
-        else:
-            balances = resp
-        usdt = 0
-        for b in balances:
-            if not isinstance(b, dict):
-                continue
-            if b.get("currency") == "USDT":
-                usdt = float(b.get("balance", 0))
-        print("[TRADER] Futures USDT balance: " + str(round(usdt, 2)), flush=True)
-        return usdt
+        data = response.json()
+        if isinstance(data, list):
+            for w in data:
+                if w.get("currency_short_name") == "USDT":
+                    bal = float(w.get("balance", 0))
+                    locked = float(w.get("locked_balance", 0))
+                    total = bal + locked
+                    print("[TRADER] Futures USDT balance: " + str(round(bal, 2)) + " locked: " + str(round(locked, 2)), flush=True)
+                    return total
+        print("[TRADER] Futures wallets response: " + json.dumps(data)[:200], flush=True)
+        return 0
     except Exception as e:
         print("[TRADER] Futures balance fetch failed: " + str(e), flush=True)
         return 0
@@ -312,7 +307,9 @@ def execute_strategy(strategy_code, all_data, good_coins, interval="1h"):
             if interval not in coin_data:
                 continue
             df = coin_data[interval]
-            sig = int(get_signals(df.copy()).iloc[-1])
+            import numpy as np
+            sig_raw = float(get_signals(df.copy()).iloc[-1])
+            sig = int(np.sign(sig_raw)) if abs(sig_raw) > 0.001 else 0
             current_price = float(df["close"].iloc[-1])
             pair = FUTURES_PAIR_MAP[coin] if TRADE_MODE == "futures" else COIN_MAP[coin]
             in_pos = coin in positions
